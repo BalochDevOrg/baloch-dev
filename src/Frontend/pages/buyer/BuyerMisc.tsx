@@ -4,6 +4,7 @@ import { Check, CheckCircle2, MapPin, Star, Store, Trash2 } from 'lucide-react'
 import { Badge, Button, EmptyState, Field, Reveal, Toggle } from '@/components/ui'
 import { addresses as addrApi, auth, emailSubscribers, stores } from '@/lib/db'
 import { useAuth, useDb, THEME_OPTIONS, useTheme } from '@/lib/providers'
+import { StoreBannerGallery } from '@/components/shared/StoreBannerGallery'
 
 /* ── Profile ──────────────────────────────────────────────────── */
 const COLORS = ['#0d7d76', '#b9821f', '#a4123f', '#5c4a7d', '#0f5d8a', '#3f7d3a']
@@ -260,9 +261,10 @@ export function BecomeSeller() {
   const [step, setStep] = useState(0)
   const [done, setDone] = useState(false)
   const [error, setError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
   const [f, setF] = useState({
     name: '', description: '', category: 'balochi-doch', location: user?.location ?? 'Quetta, Pakistan',
-    logo_color: '#0d7d76', banner: BANNERS[0],
+    logo_color: '#0d7d76', banner: '/images/banners/balochi-doch-textiles.jpg',
   })
   const [creatingAnother, setCreatingAnother] = useState(false)
   if (!user) return null
@@ -331,11 +333,29 @@ export function BecomeSeller() {
 
   const steps = ['The basics', 'Your store', 'Review & submit']
   const submit = async () => {
-    if (!f.name.trim() || !f.description.trim()) { setError('Please give your store a name and description.'); setStep(1); return }
-    const res = await auth.becomeSeller(user.id, f)
-    if (!res.ok) { setError(res.error ?? 'Something went wrong.'); return }
-    await refreshProfile()
-    setDone(true)
+    if (submitting) return
+    if (!f.name.trim() || !f.description.trim()) {
+      setError('Please give your store a name and description.')
+      setStep(1)
+      return
+    }
+    setSubmitting(true)
+    setError('')
+    try {
+      const res = await auth.becomeSeller(user.id, f)
+      if (!res.ok) {
+        setError(res.error ?? 'Something went wrong. Please check your details and try again.')
+        setSubmitting(false)
+        return
+      }
+      await refreshProfile()
+      setDone(true)
+    } catch (err: any) {
+      console.error('[BecomeSeller] submission error:', err)
+      setError(err?.message ?? 'Could not submit store. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -396,17 +416,14 @@ export function BecomeSeller() {
               ))}
             </div>
           </fieldset>
-          <fieldset>
-            <legend className="mb-2 text-[0.8rem] font-semibold text-muted">Store banner image</legend>
-            <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-6">
-              {BANNERS.map((b) => (
-                <button key={b} type="button" onClick={() => setF({ ...f, banner: b })} aria-label="Choose banner"
-                  className={`aspect-[4/3] overflow-hidden rounded-xl border-2 transition ${f.banner === b ? 'border-gold' : 'border-transparent opacity-70 hover:opacity-100'}`}>
-                  <img src={b} alt="" className="h-full w-full object-cover" />
-                </button>
-              ))}
-            </div>
-          </fieldset>
+          <div className="space-y-2">
+            <label className="block text-[0.8rem] font-semibold text-muted">Store banner image</label>
+            <StoreBannerGallery
+              selectedBanner={f.banner}
+              storeName={f.name || 'My Store'}
+              onSelect={(b) => setF({ ...f, banner: b })}
+            />
+          </div>
           {error && <p className="text-sm text-rose-500">{error}</p>}
           <div className="flex justify-between">
             <Button variant="ghost" onClick={() => setStep(0)}>Back</Button>
@@ -426,9 +443,12 @@ export function BecomeSeller() {
             <p className="mt-3 text-muted">{f.description}</p>
           </div>
           <p className="text-xs text-muted">By submitting you confirm your products are made or sourced by you and comply with our <Link to="/terms" className="underline text-brand dark:text-gold">Terms</Link>.</p>
+          {error && <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 p-3 text-sm text-rose-500">{error}</div>}
           <div className="flex justify-between">
-            <Button variant="ghost" onClick={() => setStep(1)}>Back</Button>
-            <Button variant="gold" onClick={submit}>Submit my store</Button>
+            <Button variant="ghost" disabled={submitting} onClick={() => { setError(''); setStep(1) }}>Back</Button>
+            <Button variant="gold" disabled={submitting} onClick={submit}>
+              {submitting ? 'Submitting your store…' : 'Submit my store'}
+            </Button>
           </div>
         </div>
       )}

@@ -13,7 +13,7 @@ export function CategoriesSection() {
   const rowB = all.slice(9)
 
   return (
-    <section className="relative overflow-hidden py-24 sm:py-32" aria-labelledby="categories">
+    <section id="categories" className="relative overflow-hidden py-24 sm:py-32" aria-labelledby="categories">
       <div className="mx-auto max-w-7xl px-5 sm:px-8">
         <SectionHeading
           center
@@ -151,7 +151,7 @@ export function HowItWorks() {
   }, [])
 
   return (
-    <section className="relative border-y border-line bg-bg-soft py-24 sm:py-32" aria-labelledby="how-it-works">
+    <section id="how-it-works" className="relative border-y border-line bg-bg-soft py-24 sm:py-32" aria-labelledby="how-it-works">
       <div className="mx-auto max-w-7xl px-5 sm:px-8">
         <SectionHeading
           center

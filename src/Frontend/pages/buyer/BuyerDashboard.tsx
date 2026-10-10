@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  ArrowRight, Heart, MessageCircle, Package, ShoppingBag, Star, Store, Truck, XCircle,
+  ArrowRight, ChevronRight, Heart, MessageCircle, Package, ShoppingBag, Star, Store, Truck, XCircle,
 } from 'lucide-react'
 import { Badge, Button, EmptyState, Field, Modal, Reveal, StarRating } from '@/components/ui'
 import { OrderBadge, OrderTimeline } from '@/components/shared/OrderBits'
 import { ProductCard, SellerCard } from '@/components/shared/Market'
 import { cart, orders, products, reviews as reviewsApi, wishlist, stores } from '@/lib/db'
 import { useAuth, useDb } from '@/lib/providers'
-import { formatDate, formatMoney, isCancellableOrder, paymentMethodLabel, timeAgo } from '@/lib/util'
+import { cn, formatDate, formatMoney, isCancellableOrder, paymentMethodLabel, timeAgo } from '@/lib/util'
 import type { Order } from '@/lib/types'
+
+import { BalochiBottomOrnament, BalochiDochWatermark } from '@/components/shared/BalochDecorations'
 
 /* ── Overview ─────────────────────────────────────────────────── */
 export function BuyerOverview() {
@@ -19,123 +21,224 @@ export function BuyerOverview() {
   const myOrders = orders.listByBuyer(user.id)
   const active = myOrders.filter((o) => !['reached_to_buyer', 'delivered', 'cancelled'].includes(o.status))
   const wished = wishlist.list(user.id)
-  const recommended = products.list({ sort: 'rating' }).slice(0, 4)
-  const featuredSellers = stores.listApproved().slice(0, 4)
-  const lastConv = null
+  const cartCount = cart.count(user.id)
 
   const stats = [
-    { label: 'Active orders', value: active.length, icon: <Package size={17} />, to: '/dashboard/orders' },
-    { label: 'Wishlist', value: wished.length, icon: <Heart size={17} />, to: '/dashboard/wishlist' },
-    { label: 'Total orders', value: myOrders.length, icon: <ShoppingBag size={17} />, to: '/dashboard/orders' },
-    { label: 'Cart', value: cart.count(user.id), icon: <ShoppingBag size={17} />, to: '/cart' },
+    {
+      label: 'ACTIVE ORDERS',
+      value: active.length,
+      icon: <Package size={20} />,
+      color: 'mint',
+      to: '/dashboard/orders',
+    },
+    {
+      label: 'WISHLIST',
+      value: wished.length,
+      icon: <Heart size={20} />,
+      color: 'peach',
+      to: '/dashboard/wishlist',
+    },
+    {
+      label: 'TOTAL ORDERS',
+      value: myOrders.length,
+      icon: <ShoppingBag size={20} />,
+      color: 'mint',
+      to: '/dashboard/orders',
+    },
+    {
+      label: 'CART',
+      value: cartCount,
+      icon: <ShoppingBag size={20} />,
+      color: 'peach',
+      to: '/cart',
+    },
   ]
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-sm text-muted">Salaam,</p>
-          <h2 className="font-display text-2xl font-semibold sm:text-3xl">{user.full_name.split(' ')[0]} 👋</h2>
+    <div className="space-y-6 sm:space-y-8">
+      {/* ── Welcome Banner ── */}
+      <div className="relative overflow-hidden rounded-3xl border border-line bg-surface p-6 sm:p-9 shadow-xs">
+        {/* Right corner Doch embroidery watermark */}
+        <div className="pointer-events-none absolute -right-6 -top-6 hidden sm:block opacity-35">
+          <BalochiDochWatermark size={190} />
         </div>
-        <Button to="/products" variant="gold" size="sm">Discover something new <ArrowRight size={14} /></Button>
+
+        <div className="relative z-10 max-w-xl">
+          <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-terracotta">
+            <span>Welcome</span>
+            <span className="h-0.5 w-6 bg-terracotta inline-block rounded-full" />
+          </p>
+          <h2 className="mt-2 font-display text-2xl font-bold tracking-tight text-brand dark:text-fg sm:text-3xl lg:text-4xl">
+            {user.full_name}
+          </h2>
+          <p className="mt-2.5 text-sm sm:text-base leading-relaxed text-muted">
+            Explore your orders, manage your wishlist and enjoy a seamless shopping experience at Baloch Export Hub.
+          </p>
+        </div>
       </div>
 
+      {/* ── 4 Summary Cards Matching Image 2 ── */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {stats.map((s, i) => (
-          <Reveal key={s.label} delay={i * 0.06}>
-            <Link to={s.to} className="group block rounded-2xl border border-line bg-surface p-5 transition hover:-translate-y-1 hover:border-gold/40">
-              <span className="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand/10 text-brand transition group-hover:bg-brand group-hover:text-onbrand dark:text-gold dark:group-hover:bg-gold dark:group-hover:text-[#241a04]">{s.icon}</span>
-              <p className="font-display text-3xl font-semibold leading-none tnum">{s.value}</p>
-              <p className="mt-1.5 text-xs font-semibold uppercase tracking-wider text-faint leading-snug">{s.label}</p>
-            </Link>
-          </Reveal>
-        ))}
+        {stats.map((s, i) => {
+          const isMint = s.color === 'mint'
+          return (
+            <Reveal key={s.label} delay={i * 0.05}>
+              <Link
+                to={s.to}
+                className="group relative overflow-hidden rounded-2xl border border-line bg-surface p-5 transition-all duration-200 hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-md block shadow-2xs"
+              >
+                {/* Subtle watermark in background */}
+                <div className="pointer-events-none absolute -right-4 -bottom-4 opacity-15">
+                  <BalochiDochWatermark size={90} />
+                </div>
+
+                <div className="relative z-10 flex items-start justify-between">
+                  <div
+                    className={cn(
+                      'grid h-10 w-10 place-items-center rounded-xl transition-transform group-hover:scale-105',
+                      isMint ? 'bg-brand/12 text-brand' : 'bg-terracotta/12 text-terracotta'
+                    )}
+                  >
+                    {s.icon}
+                  </div>
+                </div>
+
+                <div className="relative z-10 mt-4 flex items-end justify-between">
+                  <div>
+                    <p className="font-display text-3xl font-bold leading-none text-brand dark:text-fg tnum">
+                      {s.value}
+                    </p>
+                    <p className="mt-2 text-[0.68rem] font-bold uppercase tracking-wider text-faint">
+                      {s.label}
+                    </p>
+                  </div>
+                  <div className="grid h-7 w-7 place-items-center rounded-full border border-line bg-surface-2/60 text-fg transition group-hover:border-brand group-hover:bg-brand group-hover:text-onbrand">
+                    <ArrowRight size={13} />
+                  </div>
+                </div>
+              </Link>
+            </Reveal>
+          )
+        })}
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
-        {/* recent orders */}
-        <section className="card p-6" aria-labelledby="ov-orders">
+      {/* ── Bottom Grid: Recent Orders & Quick Actions Matching Image 2 ── */}
+      <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
+        {/* Recent orders card */}
+        <section className="rounded-3xl border border-line bg-surface p-6 sm:p-7 shadow-xs" aria-labelledby="ov-orders">
           <div className="flex items-center justify-between">
-            <h3 id="ov-orders" className="font-display text-lg font-semibold">Recent orders</h3>
-            <Link to="/dashboard/orders" className="text-sm font-semibold text-brand hover:underline dark:text-gold">View all</Link>
+            <h3 id="ov-orders" className="font-display text-lg font-bold text-brand dark:text-fg">
+              Recent orders
+            </h3>
+            <Link
+              to="/dashboard/orders"
+              className="inline-flex items-center gap-1 text-sm font-semibold text-terracotta transition hover:underline"
+            >
+              View all <ArrowRight size={14} />
+            </Link>
           </div>
+
           {myOrders.length === 0 ? (
-            <p className="mt-4 text-sm text-muted">No orders yet — your first parcel is waiting in the marketplace.</p>
+            <div className="mt-8 py-8 text-center">
+              <p className="text-sm text-muted">No orders yet — your first parcel is waiting in the marketplace.</p>
+              <Button to="/products" className="mt-4 !rounded-full !bg-brand text-onbrand px-5 py-2 text-xs font-semibold">
+                Explore Marketplace
+              </Button>
+            </div>
           ) : (
-            <ul className="mt-4 space-y-3">
-              {myOrders.slice(0, 3).map((o) => (
-                <li key={o.id} className="flex flex-wrap items-center gap-3 rounded-2xl border border-line p-3.5">
-                  <span className="flex -space-x-2">
-                    {o.items.slice(0, 3).map((i) => (
-                      <span key={i.id} className="h-10 w-10 overflow-hidden rounded-full border-2 border-[var(--surface)] bg-surface-2">
-                        {i.image ? <img src={i.image} alt="" className="h-full w-full object-cover" /> : null}
+            <ul className="mt-5 space-y-3">
+              {myOrders.slice(0, 4).map((o) => {
+                const firstImg = o.items[0]?.image || '/images/doch-closeup.jpg'
+                return (
+                  <li key={o.id}>
+                    <Link
+                      to={`/order/${o.code}`}
+                      className="group flex flex-wrap items-center gap-3.5 rounded-2xl border border-line bg-surface-2/40 p-3.5 transition hover:border-brand/40 hover:bg-surface"
+                    >
+                      {/* Product square thumbnail */}
+                      <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-line bg-surface">
+                        <img src={firstImg} alt="" className="h-full w-full object-cover transition group-hover:scale-105" />
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-bold text-fg group-hover:text-terracotta transition-colors">
+                          {o.code}
+                        </p>
+                        <p className="mt-0.5 text-xs text-muted">
+                          {formatDate(o.created_at)} • {o.items.length} item(s) • {formatMoney(o.total)}
+                        </p>
+                      </div>
+
+                      {/* Status pill matching Image 2 */}
+                      <span className="shrink-0 rounded-full bg-brand/12 px-3 py-1 text-[0.66rem] font-bold uppercase tracking-wider text-brand">
+                        {o.status.replace(/_/g, ' ')}
                       </span>
-                    ))}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <Link to={`/order/${o.code}`} className="block truncate text-sm font-semibold hover:text-gold">{o.code}</Link>
-                    <span className="text-xs text-faint">{formatDate(o.created_at)} · {o.items.length} item(s) · {formatMoney(o.total)}</span>
-                  </span>
-                  <OrderBadge status={o.status} />
-                </li>
-              ))}
+
+                      <ChevronRight size={16} className="text-muted transition group-hover:translate-x-0.5 group-hover:text-brand" />
+                    </Link>
+                  </li>
+                )
+              })}
             </ul>
           )}
         </section>
 
-        {/* quick links */}
-        <section className="card p-6" aria-labelledby="ov-quick">
-          <h3 id="ov-quick" className="font-display text-lg font-semibold">Quick actions</h3>
-          <div className="mt-4 space-y-3">
-            <Link to="/dashboard/become-seller" className="group flex items-center gap-3 rounded-2xl bg-gradient-to-r from-gold/15 to-transparent p-4 transition hover:from-gold/25">
-              <span className="grid h-11 w-11 place-items-center rounded-xl bg-gold/20 text-gold"><Star size={19} /></span>
-              <span className="flex-1">
-                <span className="block text-sm font-bold">Become a seller</span>
-                <span className="block text-xs text-muted">Open your free store in minutes</span>
-              </span>
-              <ArrowRight size={16} className="text-gold transition group-hover:translate-x-1" />
+        {/* Quick actions card */}
+        <section className="rounded-3xl border border-line bg-surface p-6 sm:p-7 shadow-xs" aria-labelledby="ov-quick">
+          <h3 id="ov-quick" className="font-display text-lg font-bold text-brand dark:text-fg">
+            Quick actions
+          </h3>
+          <div className="mt-5 space-y-3">
+            {/* 1. Become a seller */}
+            <Link
+              to="/dashboard/become-seller"
+              className="group flex items-center gap-3.5 rounded-2xl border border-line bg-surface-2/40 p-4 transition hover:border-terracotta/40 hover:bg-surface"
+            >
+              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-terracotta/12 text-terracotta">
+                <Star size={19} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-fg">Become a seller</p>
+                <p className="text-xs text-muted">Open your free store in minutes</p>
+              </div>
+              <ChevronRight size={16} className="text-muted transition group-hover:translate-x-0.5 group-hover:text-terracotta" />
             </Link>
-            {[
-              { to: '/dashboard/sellers', icon: <Store size={18} />, title: 'Discover sellers', sub: 'Browse verified store profiles' },
-              { to: '/dashboard/messages', icon: <MessageCircle size={18} />, title: 'Messages', sub: 'Talk to sellers safely' },
-              { to: '/dashboard/addresses', icon: <Truck size={18} />, title: 'Addresses', sub: 'Manage delivery details' },
-              { to: '/dashboard/reviews', icon: <Star size={18} />, title: 'Reviews', sub: 'Share your experience' },
-            ].map((l) => (
-              <Link key={l.to} to={l.to} className="group flex items-center gap-3 rounded-2xl border border-line p-4 transition hover:border-gold/40">
-                <span className="grid h-11 w-11 place-items-center rounded-xl bg-surface-2 text-muted transition group-hover:text-gold">{l.icon}</span>
-                <span className="flex-1">
-                  <span className="block text-sm font-semibold">{l.title}</span>
-                  <span className="block text-xs text-muted">{l.sub}</span>
-                </span>
-                <ArrowRight size={15} className="text-faint transition group-hover:translate-x-1 group-hover:text-gold" />
-              </Link>
-            ))}
+
+            {/* 2. Discover sellers */}
+            <Link
+              to="/dashboard/sellers"
+              className="group flex items-center gap-3.5 rounded-2xl border border-line bg-surface-2/40 p-4 transition hover:border-brand/40 hover:bg-surface"
+            >
+              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-brand/12 text-brand">
+                <Store size={19} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-fg">Discover sellers</p>
+                <p className="text-xs text-muted">Browse verified store profiles</p>
+              </div>
+              <ChevronRight size={16} className="text-muted transition group-hover:translate-x-0.5 group-hover:text-brand" />
+            </Link>
+
+            {/* 3. Messages */}
+            <Link
+              to="/dashboard/messages"
+              className="group flex items-center gap-3.5 rounded-2xl border border-line bg-surface-2/40 p-4 transition hover:border-terracotta/40 hover:bg-surface"
+            >
+              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-terracotta/12 text-terracotta">
+                <MessageCircle size={19} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-fg">Messages</p>
+                <p className="text-xs text-muted">Talk to sellers safely</p>
+              </div>
+              <ChevronRight size={16} className="text-muted transition group-hover:translate-x-0.5 group-hover:text-terracotta" />
+            </Link>
           </div>
         </section>
       </div>
 
-      {/* recommended */}
-      <section aria-labelledby="ov-rec">
-        <div className="flex items-center justify-between">
-          <h3 id="ov-rec" className="font-display text-lg font-semibold">Recommended for you</h3>
-          <Link to="/products" className="text-sm font-semibold text-brand hover:underline dark:text-gold">See all</Link>
-        </div>
-        <div className="mt-4 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
-          {recommended.map((p) => <ProductCard key={p.id} product={p} />)}
-        </div>
-      </section>
-
-      {featuredSellers.length > 0 && (
-        <section aria-labelledby="ov-sellers">
-          <div className="flex items-center justify-between">
-            <h3 id="ov-sellers" className="font-display text-lg font-semibold">Discover sellers</h3>
-            <Link to="/dashboard/sellers" className="text-sm font-semibold text-brand hover:underline dark:text-gold">View all</Link>
-          </div>
-          <div className="mt-4 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
-            {featuredSellers.map((s) => <SellerCard key={s.id} store={s} />)}
-          </div>
-        </section>
-      )}
+      {/* ── Centered Cultural Bottom Ornament Matching Image 2 ── */}
+      <BalochiBottomOrnament />
     </div>
   )
 }

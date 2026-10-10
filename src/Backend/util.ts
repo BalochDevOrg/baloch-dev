@@ -105,32 +105,32 @@ export function buyerTrackIndex(status: string): number {
 
 export const SELLER_NEXT: Partial<Record<CanonicalOrderStatus, { to: CanonicalOrderStatus; label: string }>> = {
   submitted: { to: 'packaging', label: 'Start Packaging' },
-  packaging: { to: 'packed', label: 'Packed Your Order' },
-  packed: { to: 'sent_to_platform', label: 'Send to Platform Owner' },
+  packaging: { to: 'packed', label: 'Order Packed' },
+  packed: { to: 'sent_to_platform', label: 'Ready to Send to Platform Owner' },
 }
 
 export const ADMIN_NEXT: Partial<Record<CanonicalOrderStatus, { to: CanonicalOrderStatus; label: string }>> = {
   submitted: { to: 'packaging', label: 'Start Packaging' },
-  packaging: { to: 'packed', label: 'Mark Packed' },
-  packed: { to: 'sent_to_platform', label: 'Mark Received from Seller' },
-  sent_to_platform: { to: 'on_way', label: 'On Way' },
-  on_way: { to: 'reached_to_buyer', label: 'Reached to Buyer' },
+  packaging: { to: 'packed', label: 'Mark Order Packed' },
+  packed: { to: 'sent_to_platform', label: 'Ready to Send to Platform Owner' },
+  sent_to_platform: { to: 'on_way', label: 'Mark Received & On the Way to Buyer' },
+  on_way: { to: 'reached_to_buyer', label: 'Delivered to Buyer' },
 }
 
 export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
-  submitted: 'Submitted Order',
-  packaging: 'Ready to Packing',
-  packed: 'Packed Your Order',
-  sent_to_platform: 'Sent to Platform',
-  on_way: 'On Way',
-  reached_to_buyer: 'Reached to Buyer',
+  submitted: 'Order Submitted',
+  packaging: 'Ready for Packing',
+  packed: 'Order Packed',
+  sent_to_platform: 'Sent to Platform Owner',
+  on_way: 'On the Way',
+  reached_to_buyer: 'Delivered to Buyer',
   cancelled: 'Cancelled',
-  pending: 'Submitted Order',
-  confirmed: 'Submitted Order',
-  processing: 'Ready to Packing',
-  shipped: 'Sent to Platform',
-  out_for_delivery: 'On Way',
-  delivered: 'Reached to Buyer',
+  pending: 'Order Submitted',
+  confirmed: 'Order Submitted',
+  processing: 'Ready for Packing',
+  shipped: 'Sent to Platform Owner',
+  out_for_delivery: 'On the Way',
+  delivered: 'Delivered to Buyer',
 }
 
 export const ORDER_STATUS_COLOR: Record<OrderStatus, string> = {
@@ -151,10 +151,11 @@ export const ORDER_STATUS_COLOR: Record<OrderStatus, string> = {
 
 export function paymentMethodLabel(method: string): string {
   const map: Record<string, string> = {
+    nayapay: 'NayaPay',
+    sadapay: 'SadaPay',
     easypaisa: 'Easypaisa',
     jazzcash: 'JazzCash',
-    sadapay: 'SadaPay',
-    bank_transfer: 'Bank Transfer',
+    bank_transfer: 'Seller Bank Transfer',
     cod: 'Cash on Delivery',
     'Cash on delivery': 'Cash on Delivery',
     Card: 'Card',
@@ -162,7 +163,8 @@ export function paymentMethodLabel(method: string): string {
   return map[method] ?? method
 }
 
-export function commissionOf(total: number, rate = 0.08) {
+export function commissionOf(total: number, rate = 0.0) {
+  // 0% per-product sales commission under new subscription model
   const commission = Math.round(total * rate * 100) / 100
   return { commission, earnings: Math.round((total - commission) * 100) / 100 }
 }
@@ -181,4 +183,9 @@ export function clamp(v: number, min: number, max: number) {
 
 export function stars(rating: number): number[] {
   return [1, 2, 3, 4, 5].map((i) => (rating >= i ? 1 : rating >= i - 0.5 ? 0.5 : 0))
+}
+
+export function isUuid(id?: string | null): boolean {
+  if (!id || typeof id !== 'string') return false
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)
 }

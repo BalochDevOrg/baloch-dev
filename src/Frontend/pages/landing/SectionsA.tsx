@@ -12,7 +12,7 @@ import { gsap } from '@/lib/gsap'
 /* ══ What is this platform? ═════════════════════════════════════ */
 export function WhatIs() {
   return (
-    <section className="relative py-24 sm:py-32" aria-labelledby="what-is">
+    <section id="about" className="relative py-24 sm:py-32" aria-labelledby="what-is">
       <div className="mx-auto grid max-w-7xl items-center gap-14 px-5 sm:px-8 lg:grid-cols-2 lg:gap-20">
         <div>
           <SectionHeading

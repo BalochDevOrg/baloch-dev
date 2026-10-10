@@ -6,13 +6,35 @@
  */
 import { chromium as pw } from 'playwright-core'
 import chromium from '@sparticuz/chromium'
+import fs from 'node:fs'
 
 const BASE = process.env.BASE_URL || 'http://localhost:5173'
 let pass = 0, fail = 0
 const say = (ok, msg) => { console.log((ok ? '✓' : '✗') + ' ' + msg); ok ? pass++ : fail++ }
 
+const getExecutablePath = async () => {
+  const localCandidates = [
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+  ]
+  for (const c of localCandidates) {
+    if (fs.existsSync(c)) return c
+  }
+  try {
+    return await chromium.executablePath()
+  } catch {
+    return undefined
+  }
+}
+
 const run = async (label, session, checks, actions = []) => {
-  const browser = await pw.launch({ executablePath: await chromium.executablePath(), args: chromium.args, headless: true })
+  const execPath = await getExecutablePath()
+  const launchOptions = execPath
+    ? { executablePath: execPath, headless: true }
+    : { executablePath: await chromium.executablePath(), args: chromium.args, headless: true }
+  const browser = await pw.launch(launchOptions)
   const ctx = await browser.newContext({ viewport: { width: 1360, height: 900 } })
   if (session) await ctx.addInitScript((s) => localStorage.setItem('beh-session', s), session)
   const page = await ctx.newPage()

@@ -9,7 +9,7 @@ import { Button, Reveal, SectionHeading } from '@/components/ui'
 /* ══ Create your free store — CTA ═══════════════════════════════ */
 export function CreateStoreCTA() {
   return (
-    <section className="relative overflow-hidden py-24 sm:py-36" aria-labelledby="create-store">
+    <section id="become-seller" className="relative overflow-hidden py-24 sm:py-36" aria-labelledby="create-store">
       <img src="/images/doch-closeup.jpg" alt="" className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
       <div className="absolute inset-0 bg-gradient-to-b from-[#060a0d]/88 via-[#0a1116]/80 to-[#060a0d]/92)" aria-hidden />
       <div className="absolute inset-0 bg-[radial-gradient(700px_400px_at_50%_20%,transparent,rgba(6,10,13,0.85))]" aria-hidden />
@@ -51,7 +51,7 @@ const TRUST = [
 
 export function TrustSection() {
   return (
-    <section className="relative py-24 sm:py-32" aria-labelledby="trust">
+    <section id="trust" className="relative py-24 sm:py-32" aria-labelledby="trust">
       <div className="mx-auto max-w-7xl px-5 sm:px-8">
         <div className="flex flex-col items-start justify-between gap-6 lg:flex-row lg:items-end">
           <SectionHeading
@@ -91,7 +91,7 @@ const PIPE = [
 
 export function DeliverySection() {
   return (
-    <section className="relative border-y border-line bg-bg-soft py-24 sm:py-32" aria-labelledby="delivery">
+    <section id="delivery" className="relative border-y border-line bg-bg-soft py-24 sm:py-32" aria-labelledby="delivery">
       <div className="mx-auto max-w-7xl px-5 sm:px-8">
         <SectionHeading
           center

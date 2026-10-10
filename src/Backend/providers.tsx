@@ -4,10 +4,10 @@ import { _setCachedProfile, initDb, initUserCache, subscribe, getVersion } from 
 import type { Profile } from './types'
 
 /* ── Theme ────────────────────────────────────────────────────── */
-export type AppTheme = 'original' | 'light' | 'alternative'
+export type AppTheme = 'original' | 'dark' | 'alternative'
 export const THEME_OPTIONS: Array<{ id: AppTheme; label: string; hint: string }> = [
-  { id: 'original', label: 'Original', hint: 'Signature charcoal & gold' },
-  { id: 'light', label: 'Light', hint: 'Soft off-white marketplace' },
+  { id: 'original', label: 'Original', hint: 'Warm cream & Balochi green' },
+  { id: 'dark', label: 'Dark', hint: 'Soft charcoal & gold' },
   { id: 'alternative', label: 'Alternative', hint: 'Ink & copper' },
 ]
 
@@ -18,8 +18,8 @@ const ThemeCtx = createContext<{
 }>({ theme: 'original', setTheme: () => {}, toggle: () => {} })
 
 function migrateTheme(raw: string | null): AppTheme | null {
-  if (raw === 'original' || raw === 'light' || raw === 'alternative') return raw
-  if (raw === 'dark') return 'original'
+  if (raw === 'original' || raw === 'dark' || raw === 'alternative') return raw
+  if (raw === 'light') return 'original'
   return null
 }
 
@@ -28,13 +28,13 @@ function initialTheme(): AppTheme {
     const saved = migrateTheme(localStorage.getItem('beh-theme'))
     if (saved) return saved
   } catch { /* noop */ }
-  return window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'original'
+  return 'original'
 }
 
 function applyTheme(theme: AppTheme) {
   const root = document.documentElement
   root.setAttribute('data-theme', theme)
-  root.classList.toggle('dark', theme !== 'light')
+  root.classList.toggle('dark', theme !== 'original')
   try { localStorage.setItem('beh-theme', theme) } catch { /* noop */ }
 }
 
@@ -48,7 +48,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     () => ({
       theme,
       setTheme,
-      toggle: () => setThemeState((t) => (t === 'light' ? 'original' : 'light')),
+      toggle: () => setThemeState((t) => (t === 'original' ? 'dark' : 'original')),
     }),
     [theme, setTheme],
   )
@@ -124,6 +124,7 @@ async function fetchProfile(supabase: ReturnType<typeof getSupabase>, userId: st
     .single()
 
   if (error || !data) {
+    if (error) console.error('[fetchProfile] Error querying profiles for user:', userId, error.message)
     setUser(null)
     _setCachedProfile(null)
     return
@@ -135,8 +136,13 @@ async function fetchProfile(supabase: ReturnType<typeof getSupabase>, userId: st
     return
   }
 
-  _setCachedProfile(data as Profile)
-  setUser(data as Profile)
+  const profile: Profile = {
+    ...data,
+    location: (data as any).location || [(data as any).city, (data as any).country].filter(Boolean).join(', ') || 'Balochistan, Pakistan',
+  }
+
+  _setCachedProfile(profile)
+  setUser(profile)
 
   // Populate user-specific cache (orders, cart, etc.) — fire-and-forget
   // so setLoading(false) in the caller is never blocked by heavy queries.

@@ -3,7 +3,7 @@ import { Link, NavLink, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   ChevronDown, Heart, LayoutDashboard, LogOut, Menu, MessageCircle,
-  Package, Settings, ShieldCheck, ShoppingBag, Store, User, X,
+  Package, Search, Settings, ShieldCheck, ShoppingBag, Store, User, UserPlus, X,
 } from 'lucide-react'
 import { cn } from '@/lib/util'
 import { useAuth, useDb } from '@/lib/providers'
@@ -56,38 +56,59 @@ export default function Navbar() {
 
   const dashboardTo = user?.role === 'admin' ? '/admin' : user?.role === 'seller' ? '/seller' : '/dashboard'
 
+  const onLinkClick = (e: React.MouseEvent<HTMLAnchorElement>, to: string) => {
+    if (location.pathname === '/') {
+      if (to === '/') {
+        e.preventDefault()
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+        return
+      }
+      const anchorId = to.replace('/', '')
+      const target = document.getElementById(anchorId)
+      if (target) {
+        e.preventDefault()
+        target.scrollIntoView({ behavior: 'smooth' })
+        window.history.pushState(null, '', `#${anchorId}`)
+        return
+      }
+    }
+  }
+
   return (
     <header
       className={cn(
-        'fixed inset-x-0 top-0 z-[100] transition-all duration-500',
-        scrolled
-          ? 'glass shadow-[0_8px_40px_-16px_rgb(0_0_0/0.35)]'
-          : 'border-b border-transparent bg-transparent',
+        'fixed inset-x-0 top-0 z-[100] transition-all duration-300',
+        'border-b border-line bg-surface/95 backdrop-blur-md',
+        scrolled ? 'shadow-sm' : 'shadow-2xs',
       )}
     >
-      <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-2 px-3 sm:gap-4 sm:px-6 lg:px-8" aria-label="Main navigation">
-        <div className="min-w-0 flex-1 xl:flex-none">
+      <nav className="mx-auto flex h-[70px] w-full max-w-7xl items-center justify-between gap-2 px-3 sm:gap-3 sm:px-6 lg:px-8" aria-label="Main navigation">
+        <div className="flex shrink-0 items-center">
           <Logo />
         </div>
 
-        <ul className="hidden items-center gap-0.5 xl:flex">
+        <ul className="hidden lg:flex shrink-0 items-center gap-0.5 xl:gap-1 2xl:gap-1.5">
           {LINKS.map((l) => (
             <li key={l.to}>
               <NavLink
                 to={l.to}
                 end={l.to === '/'}
+                onClick={(e) => onLinkClick(e, l.to)}
                 className={({ isActive }) =>
                   cn(
-                    'relative rounded-full px-3 py-2 text-[0.8rem] font-medium transition-colors',
-                    isActive ? 'text-gold' : 'text-muted hover:text-fg',
+                    'relative inline-flex items-center justify-center whitespace-nowrap rounded-full px-2 xl:px-2.5 2xl:px-3 py-1.5 text-[0.8rem] xl:text-[0.84rem] font-semibold transition-colors',
+                    isActive ? 'text-terracotta font-bold' : 'text-muted hover:text-fg',
                   )
                 }
               >
                 {({ isActive }) => (
                   <>
-                    {l.label}
+                    <span>{l.label}</span>
                     {isActive && (
-                      <motion.span layoutId="nav-dot" className="absolute inset-x-3 -bottom-0.5 h-0.5 rounded-full bg-gradient-to-r from-gold to-brand" />
+                      <motion.span
+                        layoutId="nav-dot"
+                        className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-5 sm:w-6 h-[2.5px] rounded-full bg-terracotta"
+                      />
                     )}
                   </>
                 )}
@@ -96,8 +117,18 @@ export default function Navbar() {
           ))}
         </ul>
 
-        <div className="flex shrink-0 items-center gap-0.5 sm:gap-2">
-          <span className="hidden min-[360px]:inline-flex"><ThemeSwitcher compact /></span>
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+          {/* Search button matching Image 1 */}
+          <Link
+            to="/search"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-line bg-surface text-fg transition hover:bg-surface-2 hover:border-brand shadow-2xs"
+            aria-label="Search marketplace"
+          >
+            <Search size={15} />
+          </Link>
+
+          {/* Theme Switcher Dropdown */}
+          <ThemeSwitcher responsive />
 
           {user && (
             <>
@@ -122,11 +153,14 @@ export default function Navbar() {
                 ref={menuBtnRef}
                 type="button"
                 onClick={() => setMenu((m) => !m)}
-                className="flex items-center gap-1.5 rounded-full p-0.5 pr-2 transition hover:bg-surface-2"
+                className="flex items-center gap-1.5 rounded-full border border-line bg-surface/85 p-0.5 pr-2.5 transition hover:bg-surface hover:border-brand shadow-2xs"
                 aria-label="Account menu" aria-expanded={menu} aria-haspopup="menu"
               >
-                <Avatar name={user.full_name} color={user.avatar_color} size={32} />
-                <ChevronDown size={14} className={cn('hidden text-muted transition-transform sm:block', menu && 'rotate-180')} />
+                <Avatar name={user.full_name} color={user.avatar_color} size={30} />
+                <span className="hidden sm:inline-block max-w-[100px] truncate text-xs font-bold text-fg">
+                  {user.full_name.split(' ')[0]}
+                </span>
+                <ChevronDown size={13} className={cn('text-muted transition-transform', menu && 'rotate-180')} />
               </button>
               <AnchoredOverlay
                 open={menu}
@@ -159,16 +193,27 @@ export default function Navbar() {
               </AnchoredOverlay>
             </>
           ) : (
-            <div className="hidden items-center gap-2 sm:flex">
-              <Button to="/login" variant="ghost" size="sm">Login</Button>
-              <Button to="/register" variant="gold" size="sm">
-                <User size={15} /> Register
+            <div className="hidden items-center gap-1.5 sm:gap-2 sm:flex shrink-0">
+              <Button
+                to="/login"
+                variant="ghost"
+                size="sm"
+                className="!rounded-full border border-line bg-surface px-3.5 sm:px-4 py-2 text-xs font-bold text-fg hover:border-brand hover:bg-surface-2 shadow-2xs whitespace-nowrap shrink-0"
+              >
+                <User size={14} /> Login
+              </Button>
+              <Button
+                to="/register"
+                size="sm"
+                className="!rounded-full !bg-brand hover:opacity-95 px-4 sm:px-5 py-2 text-xs font-bold text-onbrand shadow-2xs whitespace-nowrap shrink-0"
+              >
+                <UserPlus size={14} /> Register
               </Button>
             </div>
           )}
 
           <button
-            className="grid h-9 w-9 place-items-center rounded-full text-muted transition hover:bg-surface-2 hover:text-fg xl:hidden"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted transition hover:bg-surface-2 hover:text-fg lg:hidden"
             onClick={() => setOpen((o) => !o)}
             aria-label={open ? 'Close menu' : 'Open menu'} aria-expanded={open}
           >
@@ -183,13 +228,14 @@ export default function Navbar() {
           <motion.div
             initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-            className="glass max-h-[min(80vh,calc(100dvh-4rem))] overflow-y-auto overflow-x-hidden border-t border-line/60 xl:hidden"
+            className="glass max-h-[min(80vh,calc(100dvh-4rem))] overflow-y-auto overflow-x-hidden border-t border-line/60 lg:hidden"
           >
             <ul className="mx-auto max-w-7xl px-4 py-4 sm:px-6">
               {LINKS.map((l, i) => (
                 <motion.li key={l.to} initial={{ opacity: 0, x: -14 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.03 * i }}>
                   <NavLink
                     to={l.to} end={l.to === '/'}
+                    onClick={(e) => { setOpen(false); onLinkClick(e, l.to) }}
                     className={({ isActive }) => cn(
                       'flex items-center justify-between rounded-xl px-4 py-3 text-[0.95rem] font-medium',
                       isActive ? 'bg-gold/10 text-gold' : 'text-fg hover:bg-surface-2',

@@ -9,6 +9,7 @@ import { useAuth, useDb } from '@/lib/providers'
 import { formatDate, formatMoney, normalizeOrderStatus, paymentMethodLabel, SELLER_NEXT, timeAgo } from '@/lib/util'
 import type { Order, OrderItem } from '@/lib/types'
 import { NoStore, useSellerStore } from './SellerCenter'
+import { StoreBannerGallery } from '@/components/shared/StoreBannerGallery'
 
 export function SellerOrders() {
   useDb()
@@ -197,6 +198,7 @@ const COLORS = ['#0d7d76', '#b9821f', '#a4123f', '#5c4a7d', '#0f5d8a', '#3f7d3a'
 const BANNERS = ['/images/doch-closeup.jpg', '/images/cat-painting.jpg', '/images/cat-food.jpg', '/images/cat-jewelry.jpg', '/images/cat-herbs.jpg', '/images/cat-calligraphy.jpg']
 
 export function SellerStoreProfile() {
+  const { user } = useAuth()
   useDb()
   const store = useSellerStore()
   const [saved, setSaved] = useState(false)
@@ -216,9 +218,13 @@ export function SellerStoreProfile() {
   if (!store || !f) return <NoStore />
   const seller = users.byId(store.seller_id)
 
-  const save = (e: React.FormEvent) => {
+  const save = async (e: React.FormEvent) => {
     e.preventDefault()
-    stores.update(store.id, { ...f, logo_initials: f.name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('') })
+    if (!user || store.seller_id !== user.id) {
+      alert('You can only update your own store.')
+      return
+    }
+    await stores.update(store.id, { ...f, logo_initials: f.name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('') })
     setSaved(true)
     setTimeout(() => setSaved(false), 2200)
   }
@@ -281,17 +287,14 @@ export function SellerStoreProfile() {
             </fieldset>
           </div>
         </div>
-        <fieldset>
-          <legend className="mb-2 text-[0.8rem] font-semibold text-muted">Banner image</legend>
-          <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-6">
-            {BANNERS.map((b) => (
-              <button key={b} type="button" onClick={() => setF({ ...f, banner: b })} aria-label="Choose banner"
-                className={`aspect-[4/3] overflow-hidden rounded-xl border-2 transition ${f.banner === b ? 'border-gold' : 'border-transparent opacity-70 hover:opacity-100'}`}>
-                <img src={b} alt="" className="h-full w-full object-cover" />
-              </button>
-            ))}
-          </div>
-        </fieldset>
+        <div className="space-y-2">
+          <label className="block text-[0.8rem] font-semibold text-muted">Store Banner Gallery</label>
+          <StoreBannerGallery
+            selectedBanner={f.banner}
+            storeName={f.name}
+            onSelect={(b) => setF({ ...f, banner: b })}
+          />
+        </div>
         <div className="flex items-center gap-4 border-t border-line pt-5">
           <Button type="submit" variant="primary">Save store profile</Button>
           {saved && <span className="text-sm text-emerald-500">Saved!</span>}

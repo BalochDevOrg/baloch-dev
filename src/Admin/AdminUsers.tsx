@@ -98,6 +98,8 @@ export function AdminSellers() {
       <div className="grid gap-5 lg:grid-cols-2">
         {list.map((st) => {
           const seller = users.byId(st.seller_id)
+          const isPending = !st.is_approved && st.status !== 'rejected'
+          const isRejected = st.status === 'rejected'
           return (
             <article key={st.id} className={`card p-5 ${!st.is_approved ? 'border-amber-500/40' : ''}`}>
               <div className="flex flex-wrap items-start justify-between gap-4">
@@ -108,17 +110,37 @@ export function AdminSellers() {
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <Link to={`/store/${st.slug}`} className="font-display text-lg font-semibold hover:text-gold">{st.name}</Link>
-                      {st.is_approved ? <Badge tone="green"><Check size={12} /> Live</Badge> : <Badge tone="gold">Pending</Badge>}
+                      {st.is_approved ? <Badge tone="green"><Check size={12} /> Live</Badge> : isRejected ? <Badge tone="red">Rejected</Badge> : <Badge tone="gold">Pending</Badge>}
                       {st.blocked && <Badge tone="red">Blocked</Badge>}
                     </div>
                     <p className="mt-0.5 text-xs text-faint">@{seller?.username} · {seller?.email}</p>
                     <p className="mt-1 text-xs text-muted">{st.location} · joined {formatDate(st.created_at)} · {st.total_sales}+ sales</p>
                     <p className="mt-2 line-clamp-2 max-w-md text-sm text-muted">{st.description}</p>
+                    {st.rejection_reason && (
+                      <p className="mt-2 text-xs text-rose-500 bg-rose-500/10 rounded-lg p-2">
+                        <strong>Rejection Reason:</strong> {st.rejection_reason}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="flex flex-col gap-2">
                   {!st.is_approved ? (
-                    <Button size="sm" variant="gold" onClick={() => stores.setApproved(st.id, true)}>Approve store</Button>
+                    <>
+                      <Button size="sm" variant="gold" onClick={() => stores.approve(st.id)}>Approve store</Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-rose-500 hover:bg-rose-500/10"
+                        onClick={() => {
+                          const reason = prompt('Please enter the reason for rejecting this store application:')
+                          if (reason && reason.trim()) {
+                            void stores.reject(st.id, reason.trim())
+                          }
+                        }}
+                      >
+                        Reject store
+                      </Button>
+                    </>
                   ) : (
                     <Button size="sm" variant="ghost" onClick={() => stores.setApproved(st.id, false)}>Suspend</Button>
                   )}

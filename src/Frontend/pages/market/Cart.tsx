@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
-  ArrowRight, CheckCircle2, Heart, MapPin, Minus, Package, Plus,
+  AlertCircle, ArrowRight, CheckCircle2, Heart, MapPin, Minus, Package, Plus,
   ShieldCheck, ShoppingBag, Trash2, Truck, Wallet, Building2, Smartphone,
 } from 'lucide-react'
 import { Button, EmptyState, Field, Reveal } from '@/components/ui'
 import { ProductCard } from '@/components/shared/Market'
-import { addresses as addrApi, cart as cartApi, orders, storage, wishlist } from '@/lib/db'
+import { addresses as addrApi, bankDetails, cart as cartApi, orders, storage, wishlist } from '@/lib/db'
 import { useAuth, useDb } from '@/lib/providers'
 import { formatMoney, paymentMethodLabel } from '@/lib/util'
-import type { Address, PaymentMethod } from '@/lib/types'
+import type { Address, PaymentMethod, SellerBankDetails } from '@/lib/types'
 import { PAYMENT_METHODS } from '@/lib/types'
 
 /* ── /cart ────────────────────────────────────────────────────── */
@@ -118,6 +118,9 @@ export function CheckoutPage() {
   const [placing, setPlacing] = useState(false)
   const [showAddr, setShowAddr] = useState(false)
   const [proof, setProof] = useState<File | null>(null)
+  const [paymentRef, setPaymentRef] = useState('')
+  const [orderError, setOrderError] = useState('')
+  const [sellerBank, setSellerBank] = useState<SellerBankDetails | null>(null)
   const [newAddr, setNewAddr] = useState<Omit<Address, 'id' | 'user_id'>>({ label: '', full_name: '', phone: '', line1: '', city: '', state: '', country: 'Pakistan', is_default: false })
 
   if (!user) return <GuardLogin />
@@ -127,6 +130,15 @@ export function CheckoutPage() {
   const subtotal = items.reduce((s, i) => s + i.product.price * i.qty, 0)
   const shipping = items.length * 250
   const total = subtotal + shipping
+
+  useEffect(() => {
+    const sellerId = items[0]?.product.seller_id
+    if (sellerId) {
+      void bankDetails.get(sellerId).then((res) => {
+        if (res) setSellerBank(res)
+      })
+    }
+  }, [items])
 
   if (items.length === 0) {
     return (
@@ -146,25 +158,43 @@ export function CheckoutPage() {
   const place = async () => {
     if (!selected) { setShowAddr(true); return }
     setPlacing(true)
+    setOrderError('')
     try {
+      const orderAddress = {
+        ...selected,
+        ...(paymentRef.trim() ? { payment_reference: paymentRef.trim() } : {}),
+      }
       const order = await orders.place({
-        buyer: user, address: selected,
+        buyer: user,
+        address: orderAddress as Address,
         items: items.map((i) => ({ product: i.product, qty: i.qty })),
         payment_method: method,
       })
-      if (method === 'bank_transfer' && proof) {
+      if (method !== 'cod' && proof) {
         try { await storage.uploadPaymentProof(proof, user.id, order.id) } catch { /* proof can be uploaded later */ }
       }
       navigate(`/order/${order.code}`, { replace: true })
     } catch (e: any) {
       console.error('[checkout] place order failed', e)
-      alert("We couldn't place your order. Please try again."); setPlacing(false)
+      setOrderError(e?.message || "We couldn't place your order. Please check available stock and try again.")
+      setPlacing(false)
     }
   }
 
   return (
     <div className="mx-auto max-w-7xl px-5 pb-20 pt-24 sm:px-8">
       <h1 className="font-display text-3xl font-semibold">Checkout</h1>
+
+      {orderError && (
+        <div className="mt-4 flex items-start gap-3 rounded-2xl border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-rose-500">
+          <AlertCircle size={18} className="mt-0.5 shrink-0" />
+          <div>
+            <p className="font-semibold">Unable to place order</p>
+            <p className="mt-0.5 text-xs text-rose-400">{orderError}</p>
+          </div>
+        </div>
+      )}
+
       <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_22rem]">
         <div className="space-y-6">
           {/* address */}
@@ -220,35 +250,90 @@ export function CheckoutPage() {
                   className={`flex items-center gap-3 rounded-2xl border-2 p-4 text-left transition ${method === m.id ? 'border-gold bg-gold/5' : 'border-line hover:border-gold/40'}`}
                 >
                   <span className={`grid h-10 w-10 place-items-center rounded-xl ${method === m.id ? 'bg-gold text-white' : 'bg-surface-2 text-muted'}`}>
-                    {m.id === 'cod' ? <Truck size={18} /> : m.id === 'bank_transfer' ? <Building2 size={18} /> : m.id === 'easypaisa' || m.id === 'jazzcash' || m.id === 'sadapay' ? <Smartphone size={18} /> : <Wallet size={18} />}
+                    {m.id === 'cod' ? <Truck size={18} /> : m.id === 'bank_transfer' ? <Building2 size={18} /> : m.id === 'easypaisa' || m.id === 'nayapay' || m.id === 'sadapay' ? <Smartphone size={18} /> : <Wallet size={18} />}
                   </span>
                   <span><span className="block text-sm font-semibold">{m.label}</span><span className="block text-xs text-faint">{m.sub}</span></span>
                 </button>
               ))}
             </div>
-            {method === 'bank_transfer' && (
-              <div className="mt-4 space-y-2 rounded-xl bg-surface-2 px-4 py-3 text-xs text-muted">
-                <p>Transfer the order total to the platform bank account, then upload a screenshot of the receipt. Your order stays <strong>pending</strong> until an admin confirms the transfer.</p>
-                <p>Account title: Baloch Export Hub · Bank: (add in admin settings) · Use your order code as the reference.</p>
-                <label className="block pt-1">
-                  <span className="mb-1 block font-semibold">Payment proof (optional now)</span>
-                  <input type="file" accept="image/*,.pdf" onChange={(e) => setProof(e.target.files?.[0] ?? null)} />
-                </label>
+            {method !== 'cod' && (
+              <div className="mt-4 space-y-3 rounded-xl bg-surface-2 p-4 text-xs text-muted">
+                {method === 'bank_transfer' && (
+                  <div>
+                    <p className="font-semibold text-fg">Direct Bank Transfer Instructions (Manual):</p>
+                    {sellerBank ? (
+                      <div className="mt-2 space-y-1 rounded-xl border border-line bg-surface p-3 font-mono text-[11px] text-brand dark:text-gold">
+                        <p><span className="text-faint">Bank:</span> {sellerBank.bank_name}</p>
+                        <p><span className="text-faint">Account Title:</span> {sellerBank.account_title}</p>
+                        <p><span className="text-faint">Account / IBAN:</span> {sellerBank.iban || sellerBank.account_number}</p>
+                        {sellerBank.payment_instructions && <p className="font-sans text-xs text-muted mt-1"><span className="text-faint">Seller Note:</span> {sellerBank.payment_instructions}</p>}
+                      </div>
+                    ) : (
+                      <div className="mt-2 space-y-1 rounded-xl border border-line bg-surface p-3 font-mono text-[11px] text-brand dark:text-gold">
+                        <p><span className="text-faint">Bank:</span> Meezan Bank / HBL</p>
+                        <p><span className="text-faint">Account Title:</span> Baloch Export Hub</p>
+                        <p><span className="text-faint">IBAN:</span> PK00MEZN0000000000000000</p>
+                      </div>
+                    )}
+                    <p className="mt-1 text-[0.7rem] text-faint">Transfer order total and provide transaction ID below. Payments are manually verified by platform administrators.</p>
+                  </div>
+                )}
+                {method === 'nayapay' && (
+                  <div>
+                    <p className="font-semibold text-fg">NayaPay Instructions (Manual Verification):</p>
+                    <p className="mt-1">Send funds via NayaPay to the official platform wallet:</p>
+                    <div className="mt-2 rounded-xl border border-line bg-surface p-3 font-mono text-[11px] text-brand dark:text-gold">
+                      <p>Account Title: <strong>Baloch Export Hub</strong> · Mobile: <strong>03332826358</strong></p>
+                    </div>
+                  </div>
+                )}
+                {method === 'sadapay' && (
+                  <div>
+                    <p className="font-semibold text-fg">SadaPay Instructions (Manual Verification):</p>
+                    <p className="mt-1">Send funds via SadaPay to the official platform wallet:</p>
+                    <div className="mt-2 rounded-xl border border-line bg-surface p-3 font-mono text-[11px] text-brand dark:text-gold">
+                      <p>Account Title: <strong>Baloch Export Hub</strong> · Mobile / IBAN: <strong>03332826358</strong></p>
+                    </div>
+                  </div>
+                )}
+                {method === 'easypaisa' && (
+                  <div>
+                    <p className="font-semibold text-fg">Easypaisa Instructions (Manual Verification):</p>
+                    <p className="mt-1">Send funds via Easypaisa mobile account:</p>
+                    <div className="mt-2 rounded-xl border border-line bg-surface p-3 font-mono text-[11px] text-brand dark:text-gold">
+                      <p>Account Title: <strong>Baloch Export Hub</strong> · Mobile: <strong>03332826358</strong></p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid gap-3 pt-2 sm:grid-cols-2">
+                  <div>
+                    <label htmlFor="co-payment-ref" className="mb-1 block font-semibold text-fg">Transaction ID / Reference # (optional)</label>
+                    <input
+                      id="co-payment-ref"
+                      type="text"
+                      className="field text-xs"
+                      placeholder="e.g. TID-9823412 or bank ref"
+                      value={paymentRef}
+                      onChange={(e) => setPaymentRef(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="co-payment-proof" className="mb-1 block font-semibold text-fg">Payment Screenshot / Proof (optional)</label>
+                    <input
+                      id="co-payment-proof"
+                      type="file"
+                      accept="image/*,.pdf"
+                      className="text-xs file:mr-2 file:rounded-lg file:border-0 file:bg-surface file:px-2.5 file:py-1 file:text-xs file:font-semibold file:text-fg hover:file:bg-gold/20"
+                      onChange={(e) => setProof(e.target.files?.[0] ?? null)}
+                    />
+                  </div>
+                </div>
               </div>
-            )}
-            {(method === 'easypaisa' || method === 'jazzcash' || method === 'sadapay') && (
-              <p className="mt-4 rounded-xl bg-surface-2 px-4 py-3 text-xs text-muted">
-                {paymentMethodLabel(method)} checkout requires merchant credentials. Your order will be created with payment <strong>pending</strong> and will not be marked paid from this page.
-              </p>
             )}
             {method === 'cod' && (
               <p className="mt-4 rounded-xl bg-surface-2 px-4 py-3 text-xs text-muted">
-                Cash on delivery: pay the courier. Payment status stays pending until the seller marks the order delivered.
-              </p>
-            )}
-            {method !== 'bank_transfer' && method !== 'easypaisa' && method !== 'jazzcash' && method !== 'sadapay' && method !== 'cod' && (
-              <p className="mt-4 rounded-xl bg-surface-2 px-4 py-3 text-xs text-muted">
-                Payments are processed inside the platform — never transfer money to a seller directly.
+                <strong>Cash on Delivery:</strong> Pay the courier in cash upon package delivery. Payment status remains pending until courier delivers the shipment.
               </p>
             )}
           </section>

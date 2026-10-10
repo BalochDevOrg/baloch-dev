@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowRight, Eye, EyeOff, Lock, Mail, ShieldCheck, Store, User, X } from 'lucide-react'
 import { Button, Field, Logo, Octagram } from '@/components/ui'
 import { auth } from '@/lib/db'
 import { homeFor } from '@/components/layout/PublicLayout'
+import { useAuth } from '@/lib/providers'
 import type { Profile } from '@/lib/types'
 
 /* Shared split-screen shell */
@@ -73,6 +74,13 @@ export function LoginPage() {
   const [submitting, setSubmitting] = useState(false)
   const navigate = useNavigate()
   const location = useLocation() as { state?: { from?: string } }
+  const { user, loading } = useAuth()
+
+  useEffect(() => {
+    if (!loading && user) {
+      navigate(homeFor(user.role), { replace: true })
+    }
+  }, [user, loading, navigate])
 
   const signIn = async (e?: React.FormEvent) => {
     e?.preventDefault()
@@ -89,9 +97,24 @@ export function LoginPage() {
         setError('Sign-in succeeded but profile could not be loaded. Please try again.')
         return
       }
-      const target = location.state?.from && !['/login', '/register'].includes(location.state.from)
-        ? location.state.from
-        : homeFor(res.user.role)
+
+      const from = location.state?.from
+      // If from is omitted, or points to generic auth/dashboard roots, route directly by role:
+      const isGeneric = !from || ['/login', '/register', '/dashboard', '/seller', '/admin', '/'].includes(from)
+      let target: string
+      if (isGeneric) {
+        target = homeFor(res.user.role)
+      } else {
+        // Enforce role authorization on deep link redirects:
+        if (from.startsWith('/admin') && res.user.role !== 'admin') {
+          target = homeFor(res.user.role)
+        } else if (from.startsWith('/seller') && res.user.role === 'buyer') {
+          target = homeFor(res.user.role)
+        } else {
+          target = from
+        }
+      }
+
       navigate(target, { replace: true })
     } catch (e: any) {
       console.error('Sign-in error:', e)
@@ -140,6 +163,13 @@ export function RegisterPage() {
   const [show, setShow] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const navigate = useNavigate()
+  const { user, loading } = useAuth()
+
+  useEffect(() => {
+    if (!loading && user) {
+      navigate(homeFor(user.role), { replace: true })
+    }
+  }, [user, loading, navigate])
 
   const pwValid = f.password.length >= 8
   const match = f.password === f.confirm

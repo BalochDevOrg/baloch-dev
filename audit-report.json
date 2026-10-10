@@ -1,11 +1,11 @@
 {
-  "pass": 42,
-  "fail": 4,
-  "warn": 3,
+  "pass": 53,
+  "fail": 5,
+  "warn": 2,
   "details": {
     "Table: profiles": {
       "ok": true,
-      "detail": "0 row(s) returned"
+      "detail": "1 row(s) returned"
     },
     "Table: categories": {
       "ok": true,
@@ -17,7 +17,7 @@
     },
     "Table: products": {
       "ok": true,
-      "detail": "0 row(s) returned"
+      "detail": "1 row(s) returned"
     },
     "Table: product_images": {
       "ok": true,
@@ -71,13 +71,57 @@
       "ok": true,
       "detail": "0 row(s) returned"
     },
-    "profiles columns": {
-      "ok": "warn",
-      "detail": "No profile rows to inspect columns — will check via INSERT attempt"
+    "profiles.id": {
+      "ok": true,
+      "detail": "OK"
+    },
+    "profiles.full_name": {
+      "ok": true,
+      "detail": "OK"
+    },
+    "profiles.username": {
+      "ok": true,
+      "detail": "OK"
+    },
+    "profiles.email": {
+      "ok": true,
+      "detail": "OK"
+    },
+    "profiles.avatar_color": {
+      "ok": true,
+      "detail": "OK"
+    },
+    "profiles.role": {
+      "ok": true,
+      "detail": "OK"
+    },
+    "profiles.is_blocked": {
+      "ok": true,
+      "detail": "OK"
+    },
+    "profiles.created_at": {
+      "ok": true,
+      "detail": "OK"
     },
     "seller_stores columns": {
       "ok": "warn",
       "detail": "No store rows to inspect"
+    },
+    "products has \"status\"": {
+      "ok": true,
+      "detail": "OK"
+    },
+    "products has \"sold\"": {
+      "ok": true,
+      "detail": "OK"
+    },
+    "products has \"stock\"": {
+      "ok": true,
+      "detail": "OK"
+    },
+    "products has \"tags\"": {
+      "ok": true,
+      "detail": "OK"
     },
     "RLS: categories readable by anon": {
       "ok": true,
@@ -85,7 +129,7 @@
     },
     "RLS: products readable by anon": {
       "ok": true,
-      "detail": "0 rows"
+      "detail": "1 rows"
     },
     "RLS: product_images readable by anon": {
       "ok": true,
@@ -116,12 +160,12 @@
       "detail": "Correctly blocked"
     },
     "RLS: profiles blocked for anon": {
-      "ok": true,
-      "detail": "Correctly blocked"
+      "ok": false,
+      "detail": "Anon can read 1 rows — migration 002 not applied or policy still using (true)"
     },
     "RLS: public_profiles view readable": {
       "ok": true,
-      "detail": "0 rows"
+      "detail": "1 rows"
     },
     "RLS: seller_stores readable by anon (approved)": {
       "ok": true,
@@ -145,15 +189,15 @@
     },
     "RPC: place_order": {
       "ok": true,
-      "detail": "Exists and requires auth"
+      "detail": "Exists: Authentication required to place an order."
     },
     "RPC: set_order_item_status": {
       "ok": true,
-      "detail": "Exists and works"
+      "detail": "Exists: Could not find the function public.set_order_item_status(p_order_item, p_status) in the schema cache"
     },
     "Function: my_role": {
       "ok": true,
-      "detail": "Exists"
+      "detail": "Could not find the function public.my_role without parameters in the schema cache"
     },
     "Function: handle_new_user (trigger)": {
       "ok": true,
@@ -181,15 +225,15 @@
     },
     "order_items.product_id query": {
       "ok": true,
-      "detail": "189ms — fast (index likely exists)"
+      "detail": "180ms — fast (index likely exists)"
     },
     "platform_settings": {
       "ok": true,
-      "detail": "Commission: 8%, Currency: PKR, Name: Baloch Export Hub"
+      "detail": "Commission: 0%, Currency: PKR, Name: Baloch Export Hub"
     },
     "platform_settings.commission_rate": {
       "ok": true,
-      "detail": "8"
+      "detail": "0"
     },
     "platform_settings.allow_registrations": {
       "ok": true,

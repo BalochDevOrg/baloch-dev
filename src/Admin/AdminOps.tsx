@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Download, Eye, EyeOff, FileBarChart, XCircle } from 'lucide-react'
+import { CheckCircle, Download, Eye, EyeOff, FileBarChart, XCircle } from 'lucide-react'
 import { Badge, Button, EmptyState, StarRating, Toggle } from '@/components/ui'
 import { OrderBadge, OrderHistoryList } from '@/components/shared/OrderBits'
 import { ensureAdminData, messaging, notifications as notifApi, orders, reports, reviews as reviewsApi, settings, stats, stores, users } from '@/lib/db'
@@ -30,6 +30,21 @@ export function AdminOrders() {
     setBusy(orderId)
     try { await orders.advance(orderId, to) }
     catch (e: any) { console.error(e); alert(e?.message ?? 'Could not update order status.') }
+    finally { setBusy(null) }
+  }
+
+  const confirmPayment = async (orderId: string) => {
+    setBusy(orderId)
+    try { await orders.confirmPayment(orderId) }
+    catch (e: any) { console.error(e); alert(e?.message ?? 'Could not verify payment.') }
+    finally { setBusy(null) }
+  }
+
+  const rejectPayment = async (orderId: string) => {
+    const reason = prompt('Reason for payment rejection (optional):') ?? undefined
+    setBusy(orderId)
+    try { await orders.rejectPayment(orderId, reason) }
+    catch (e: any) { console.error(e); alert(e?.message ?? 'Could not reject payment.') }
     finally { setBusy(null) }
   }
 
@@ -100,18 +115,43 @@ export function AdminOrders() {
                             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-faint">Order history</p>
                             <OrderHistoryList history={orders.history(o.id)} />
                           </div>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {next && (
-                              <Button size="sm" variant="primary" disabled={busy === o.id} onClick={(e) => { e.stopPropagation(); void advance(o.id, next.to) }}>
-                                {busy === o.id ? 'Updating…' : next.label}
-                              </Button>
-                            )}
-                            {!['reached_to_buyer', 'cancelled'].includes(normalizeOrderStatus(o.status)) && (
-                              <button onClick={(e) => { e.stopPropagation(); if (confirm(`Cancel order ${o.code}?`)) orders.cancel(o.id) }}
-                                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-rose-500 hover:bg-rose-500/10">
-                                <XCircle size={13} /> Force cancel & refund
-                              </button>
-                            )}
+                          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line/60 pt-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-xs font-semibold text-faint">Payment:</span>
+                              {o.payment === 'paid' ? (
+                                <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-500">
+                                  <CheckCircle size={13} /> Paid &amp; Verified
+                                </span>
+                              ) : (
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Badge tone="gold" className="text-xs">Pending Verification</Badge>
+                                  <Button size="sm" variant="gold" disabled={busy === o.id} onClick={(e) => { e.stopPropagation(); void confirmPayment(o.id) }}>
+                                    <CheckCircle size={13} className="mr-1" />
+                                    {busy === o.id ? 'Updating…' : 'Verify & Mark Paid'}
+                                  </Button>
+                                  <button
+                                    disabled={busy === o.id}
+                                    onClick={(e) => { e.stopPropagation(); void rejectPayment(o.id) }}
+                                    className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1 text-xs font-medium text-rose-500 hover:bg-rose-500/10"
+                                  >
+                                    Reject Payment
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {next && (
+                                <Button size="sm" variant="primary" disabled={busy === o.id} onClick={(e) => { e.stopPropagation(); void advance(o.id, next.to) }}>
+                                  {busy === o.id ? 'Updating…' : next.label}
+                                </Button>
+                              )}
+                              {!['reached_to_buyer', 'cancelled'].includes(normalizeOrderStatus(o.status)) && (
+                                <button onClick={(e) => { e.stopPropagation(); if (confirm(`Cancel order ${o.code}?`)) orders.cancel(o.id) }}
+                                  className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-rose-500 hover:bg-rose-500/10">
+                                  <XCircle size={13} /> Force cancel & refund
+                                </button>
+                              )}
+                            </div>
                           </div>
                         </td>
                       </tr>

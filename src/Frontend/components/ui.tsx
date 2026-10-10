@@ -21,24 +21,10 @@ export function Octagram({ size = 36, className }: { size?: number; className?: 
   )
 }
 
-export function Logo({ compact = false }: { compact?: boolean }) {
-  return (
-    <Link to="/" className="group inline-flex min-w-0 max-w-full items-center gap-1.5 sm:gap-2.5" aria-label="Baloch Export Hub — home">
-      <span className="relative grid shrink-0 place-items-center">
-        <Octagram size={34} className="h-7 w-7 transition-transform duration-700 group-hover:rotate-90 sm:h-8 sm:w-8 lg:h-[34px] lg:w-[34px]" />
-      </span>
-      {!compact && (
-        <span className="flex min-w-0 flex-col">
-          <span className="block truncate font-display text-[0.88rem] font-semibold leading-none tracking-tight sm:text-[1.05rem]">
-            Baloch <span className="text-gold">Export Hub</span>
-          </span>
-          <span className="mt-1 hidden whitespace-nowrap text-[0.5rem] font-medium uppercase tracking-[0.12em] text-faint min-[480px]:block sm:mt-1.5 sm:text-[0.58rem] sm:tracking-[0.22em] lg:tracking-[0.28em]">
-            Craft • Culture • Trade
-          </span>
-        </span>
-      )}
-    </Link>
-  )
+import { BalochLogo } from '@/components/shared/BalochDecorations'
+
+export function Logo({ compact = false, className, lightText }: { compact?: boolean; className?: string; lightText?: boolean }) {
+  return <BalochLogo compact={compact} className={className} lightText={lightText} />
 }
 
 /* ── Buttons ──────────────────────────────────────────────────── */

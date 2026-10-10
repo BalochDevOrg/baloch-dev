@@ -1,127 +1,105 @@
 @import 'tailwindcss';
 @import '@fontsource-variable/inter';
-@import '@fontsource-variable/fraunces';
+@import '@fontsource/roboto-slab';
 
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* ── Semantic design tokens (light/dark) ─────────────────────────── */
 @theme inline {
   --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
-  --font-display: 'Fraunces Variable', ui-serif, Georgia, serif;
+  --font-display: 'Roboto Slab', Georgia, serif;
 
   --color-bg: var(--bg);
   --color-bg-soft: var(--bg-soft);
   --color-surface: var(--surface);
   --color-surface-2: var(--surface-2);
   --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
   --color-fg: var(--fg);
   --color-muted: var(--muted);
   --color-faint: var(--faint);
   --color-brand: var(--brand);
   --color-brand-deep: var(--brand-deep);
+  --color-terracotta: var(--terracotta);
+  --color-terracotta-soft: var(--terracotta-soft);
   --color-gold: var(--gold);
   --color-gold-soft: var(--gold-soft);
   --color-crimson: var(--crimson);
   --color-onbrand: var(--onbrand);
 }
 
-/* Theme 1 — Original: existing dark charcoal-teal brand identity */
+/* Theme 1 — Original (Light): Primary Signature warm cream, deep Balochi green, terracotta accents */
 :root,
-html[data-theme='original'] {
-  --bg: #0a0f14;
-  --bg-soft: #0d141b;
-  --surface: #101a22;
-  --surface-2: #16222c;
-  --line: #20303b;
-  --fg: #e9f0f2;
-  --muted: #9db0b6;
-  --faint: #667c83;
-  --brand: #17aa9d;
-  --brand-deep: #06211f;
-  --gold: #e0b054;
-  --gold-soft: #3a2f17;
-  --crimson: #e35576;
-  --onbrand: #032723;
-  color-scheme: dark;
-}
-
-/* Keep existing `.dark` utilities working for Original + Alternative */
-.dark {
-  --bg: #0a0f14;
-  --bg-soft: #0d141b;
-  --surface: #101a22;
-  --surface-2: #16222c;
-  --line: #20303b;
-  --fg: #e9f0f2;
-  --muted: #9db0b6;
-  --faint: #667c83;
-  --brand: #17aa9d;
-  --brand-deep: #06211f;
-  --gold: #e0b054;
-  --gold-soft: #3a2f17;
-  --crimson: #e35576;
-  --onbrand: #032723;
-  color-scheme: dark;
-}
-
-/* Theme 2 — Light: soft off-white marketplace, not full white */
+html[data-theme='original'],
 html[data-theme='light'] {
-  --bg: #f4efe6;
-  --bg-soft: #ebe3d4;
-  --surface: #fffcf7;
-  --surface-2: #f3ece0;
-  --line: #e0d4c0;
-  --fg: #1c2624;
-  --muted: #4d5b57;
-  --faint: #7a8580;
-  --brand: #0b6e68;
-  --brand-deep: #0a3733;
-  --gold: #a6741c;
-  --gold-soft: #f0e2c4;
-  --crimson: #9c123b;
-  --onbrand: #ffffff;
+  --bg: #FAF7F2;
+  --bg-soft: #F3ECE1;
+  --surface: #FFFFFF;
+  --surface-2: #F6F2EA;
+  --line: #E8E0D2;
+  --line-strong: #D8CEBD;
+  --fg: #152722;
+  --muted: #566863;
+  --faint: #889893;
+  --brand: #144237;
+  --brand-deep: #0D2C24;
+  --terracotta: #C05621;
+  --terracotta-soft: #FDF1EA;
+  --gold: #D97706;
+  --gold-soft: #FEF3C7;
+  --crimson: #DC2626;
+  --onbrand: #FFFFFF;
   color-scheme: light;
 }
 
-/* Theme 3 — Alternative: ink + copper, still marketplace-professional */
-html[data-theme='alternative'] {
-  --bg: #12141c;
-  --bg-soft: #171a24;
-  --surface: #1c2030;
-  --surface-2: #252a3c;
-  --line: #343b54;
-  --fg: #f3eee6;
-  --muted: #b7ae9f;
-  --faint: #817a6e;
-  --brand: #3d9b8f;
-  --brand-deep: #0e2a28;
-  --gold: #c9924a;
-  --gold-soft: #3d2e18;
-  --crimson: #c45c5c;
-  --onbrand: #071614;
+/* Theme 2 — Dark: Soft charcoal, dark slate, deep navy brand identity */
+html[data-theme='dark'],
+.dark:not([data-theme='original']):not([data-theme='light']):not([data-theme='alternative']) {
+  --bg: #161D22;
+  --bg-soft: #1C242A;
+  --surface: #222C33;
+  --surface-2: #28343D;
+  --line: #32404A;
+  --line-strong: #41535F;
+  --fg: #F0F4F6;
+  --muted: #A6B7BF;
+  --faint: #768993;
+  --brand: #1EBAAB;
+  --brand-deep: #0D3330;
+  --terracotta: #E58354;
+  --terracotta-soft: #352018;
+  --gold: #E5B75E;
+  --gold-soft: #3D3019;
+  --crimson: #E86380;
+  --onbrand: #0A2320;
   color-scheme: dark;
 }
 
-html[data-theme='alternative'].dark {
-  --bg: #12141c;
-  --bg-soft: #171a24;
-  --surface: #1c2030;
-  --surface-2: #252a3c;
-  --line: #343b54;
-  --fg: #f3eee6;
-  --muted: #b7ae9f;
-  --faint: #817a6e;
-  --brand: #3d9b8f;
-  --brand-deep: #0e2a28;
-  --gold: #c9924a;
-  --gold-soft: #3d2e18;
-  --crimson: #c45c5c;
+/* Theme 3 — Alternative: ink & copper */
+html[data-theme='alternative'] {
+  --bg: #12141C;
+  --bg-soft: #171A24;
+  --surface: #1C2030;
+  --surface-2: #252A3C;
+  --line: #343B54;
+  --line-strong: #485275;
+  --fg: #F3EEE6;
+  --muted: #B7AE9F;
+  --faint: #817A6E;
+  --brand: #3D9B8F;
+  --brand-deep: #0E2A28;
+  --terracotta: #D27342;
+  --terracotta-soft: #2E1912;
+  --gold: #C9924A;
+  --gold-soft: #3D2E18;
+  --crimson: #C45C5C;
   --onbrand: #071614;
   color-scheme: dark;
 }
 
 html {
   scroll-behavior: smooth;
+  scroll-padding-top: 5rem;
   overflow-x: clip;
 }
 @media (prefers-reduced-motion: reduce) {

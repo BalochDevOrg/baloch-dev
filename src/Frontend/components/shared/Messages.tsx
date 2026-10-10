@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { MessageCircle, Package, Search, Send } from 'lucide-react'
+import { MessageCircle, Package, Search, Send, Loader2, AlertCircle } from 'lucide-react'
 import { messaging, products, stores } from '@/lib/db'
 import { useAuth, useDb } from '@/lib/providers'
 import { cn, formatDate, timeAgo } from '@/lib/util'
@@ -15,8 +15,14 @@ export function MessagesView({ perspective }: { perspective: 'buyer' | 'seller' 
   const dbVersion = useDb()
   const [activeId, setActiveId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
+  const [sending, setSending] = useState(false)
+  const [sendError, setSendError] = useState<string | null>(null)
   const [q, setQ] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (user?.id) void messaging.reload(user.id)
+  }, [user?.id])
 
   const conversations = useMemo(() => {
     if (!user) return []
@@ -35,8 +41,8 @@ export function MessagesView({ perspective }: { perspective: 'buyer' | 'seller' 
   const thread = active ? messaging.messages(active.id) : []
 
   useEffect(() => {
-    if (active) messaging.markRead(active.id, user!.id)
-  }, [activeId, thread.length])
+    if (active && user?.id) messaging.markRead(active.id, user.id)
+  }, [activeId, thread.length, user?.id])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
@@ -44,10 +50,20 @@ export function MessagesView({ perspective }: { perspective: 'buyer' | 'seller' 
 
   if (!user) return null
 
-  const send = () => {
-    if (!active || !draft.trim()) return
-    messaging.send(active.id, user.id, draft)
-    setDraft('')
+  const send = async () => {
+    const text = draft.trim()
+    if (!active || !text || sending) return
+    setSending(true)
+    setSendError(null)
+    try {
+      await messaging.send(active.id, user.id, text)
+      setDraft('')
+    } catch (err: any) {
+      console.error('[Messages] send error:', err)
+      setSendError(err?.message || 'Failed to send message. Please try again.')
+    } finally {
+      setSending(false)
+    }
   }
 
   return (
@@ -159,21 +175,35 @@ export function MessagesView({ perspective }: { perspective: 'buyer' | 'seller' 
               <div ref={bottomRef} />
             </div>
 
-            <div className="border-t border-line p-3.5">
+            <div className="border-t border-line p-3.5 space-y-2">
+              {sendError && (
+                <div className="flex items-center gap-2 rounded-xl bg-rose-500/10 px-3 py-2 text-xs text-rose-500">
+                  <AlertCircle size={14} className="shrink-0" />
+                  <span className="flex-1">{sendError}</span>
+                  <button type="button" onClick={() => setSendError(null)} className="font-semibold underline">Dismiss</button>
+                </div>
+              )}
               <div className="flex items-end gap-2">
                 <textarea
                   id="msg-draft"
                   name="message"
                   className="field min-h-[2.9rem] resize-none py-2.5"
                   rows={1}
+                  disabled={sending}
                   placeholder="Write a message… (contact details are kept off-platform for safety)"
                   value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
+                  onChange={(e) => { setDraft(e.target.value); if (sendError) setSendError(null) }}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send() } }}
                   aria-label="Message text"
                 />
-                <button onClick={send} disabled={!draft.trim()} className="btn btn-primary h-[2.9rem] w-[2.9rem] !rounded-2xl !p-0 disabled:opacity-40" aria-label="Send message">
-                  <Send size={17} />
+                <button
+                  type="button"
+                  onClick={() => void send()}
+                  disabled={!draft.trim() || sending}
+                  className="btn btn-primary h-[2.9rem] w-[2.9rem] !rounded-2xl !p-0 disabled:opacity-40"
+                  aria-label="Send message"
+                >
+                  {sending ? <Loader2 size={17} className="animate-spin" /> : <Send size={17} />}
                 </button>
               </div>
             </div>

@@ -1,10 +1,18 @@
 import { forwardRef, useEffect, useId, useRef, useState } from 'react'
-import { Check, Palette } from 'lucide-react'
+import { Check, ChevronDown, Palette } from 'lucide-react'
 import { cn } from '@/lib/util'
 import { THEME_OPTIONS, useTheme, type AppTheme } from '@/lib/providers'
 import { AnchoredOverlay } from '@/components/shared/AnchoredOverlay'
 
-export function ThemeSwitcher({ compact = false }: { compact?: boolean }) {
+export function ThemeSwitcher({
+  compact = false,
+  responsive = false,
+  className,
+}: {
+  compact?: boolean
+  responsive?: boolean
+  className?: string
+}) {
   const { theme, setTheme } = useTheme()
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
@@ -63,16 +71,40 @@ export function ThemeSwitcher({ compact = false }: { compact?: boolean }) {
         onClick={() => setOpen((o) => !o)}
         onKeyDown={onTriggerKeyDown}
         className={cn(
-          'inline-flex items-center gap-1.5 rounded-full text-muted transition hover:bg-surface-2 hover:text-fg',
-          compact ? 'h-9 w-9 justify-center' : 'h-9 px-3',
+          'inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-line bg-surface text-xs font-semibold text-fg transition hover:bg-surface-2 hover:border-brand shadow-2xs',
+          compact
+            ? 'w-9 justify-center p-0'
+            : responsive
+              ? 'w-9 justify-center p-0 2xl:w-auto 2xl:px-3 2xl:justify-start'
+              : 'px-2.5 sm:px-3',
+          className,
         )}
         aria-label={`Theme: ${current?.label ?? 'Original'}. Change theme`}
         aria-expanded={open}
         aria-haspopup="listbox"
         aria-controls={listId}
       >
-        <Palette size={16} />
-        {!compact && <span className="hidden text-xs font-semibold sm:inline">{current?.label}</span>}
+        <Palette size={14} className="text-terracotta shrink-0" />
+        {!compact && (
+          <>
+            <span
+              className={cn(
+                'text-xs font-semibold text-fg',
+                responsive ? 'hidden 2xl:inline' : 'hidden min-[420px]:inline',
+              )}
+            >
+              {current?.label ?? 'Theme'}
+            </span>
+            <ChevronDown
+              size={12}
+              className={cn(
+                'text-muted transition-transform duration-200',
+                responsive ? 'hidden 2xl:inline' : '',
+                open && 'rotate-180',
+              )}
+            />
+          </>
+        )}
       </button>
       <AnchoredOverlay
         open={open}
@@ -135,7 +167,7 @@ const ThemeOption = forwardRef<HTMLButtonElement, {
 })
 
 function swatch(id: AppTheme) {
-  if (id === 'light') return { a: '#f4efe6', b: '#0b6e68', c: '#a6741c' }
-  if (id === 'alternative') return { a: '#12141c', b: '#3d9b8f', c: '#c9924a' }
-  return { a: '#0a0f14', b: '#17aa9d', c: '#e0b054' }
+  if (id === 'original') return { a: '#FAF7F2', b: '#144237', c: '#C05621' }
+  if (id === 'dark') return { a: '#161D22', b: '#1EBAAB', c: '#E5B75E' }
+  return { a: '#12141C', b: '#3D9B8F', c: '#C9924A' }
 }

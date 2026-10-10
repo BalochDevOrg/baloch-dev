@@ -54,11 +54,16 @@ export function ProductPage() {
     navigate('/checkout')
   }
 
-  const sendAsk = () => {
+  const sendAsk = async () => {
     if (!user) return navigate('/login', { state: { from: `/product/${product.id}` } })
-    messaging.start({ buyerId: user.id, sellerId: product.seller_id, productId: product.id, storeId: product.store_id, body: ask })
-    setAskOpen(false)
-    navigate('/dashboard/messages')
+    if (!ask.trim()) return
+    try {
+      await messaging.start({ buyerId: user.id, sellerId: product.seller_id, productId: product.id, storeId: product.store_id, body: ask.trim() })
+      setAskOpen(false)
+      navigate('/dashboard/messages')
+    } catch (err: any) {
+      alert(err?.message || 'Could not send message to seller.')
+    }
   }
 
   const submitReview = (e: React.FormEvent) => {

@@ -64,7 +64,14 @@ export function NotificationsBell() {
               type="button"
               onClick={() => {
                 notifApi.markRead(n.id)
-                if (n.href) { setOpen(false); navigate(n.href) }
+                setOpen(false)
+                const target = n.href || (
+                  n.type === 'order' ? (user.role === 'seller' ? '/seller/orders' : user.role === 'admin' ? '/admin/orders' : '/dashboard/orders')
+                  : n.type === 'message' ? '/dashboard/messages'
+                  : n.type === 'store' ? (user.role === 'admin' ? '/admin/sellers' : '/seller')
+                  : undefined
+                )
+                if (target) navigate(target)
               }}
               className={cn('flex w-full gap-3 border-b border-line/60 px-4 py-3 text-left transition hover:bg-surface-2', !n.read && 'bg-brand/5')}
             >

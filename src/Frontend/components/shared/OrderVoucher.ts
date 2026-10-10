@@ -115,8 +115,9 @@ function buildVoucherHtml({ order, items, store, seller }: VoucherInput): string
       </div>
       <div class="meta">
         <strong>Order voucher</strong>
-        ${esc(order.code)}<br/>
-        ${esc(formatDate(order.created_at, true))}<br/>
+        Ref: ${esc(order.code)}<br/>
+        Order Date: ${esc(formatDate(order.created_at, true))}<br/>
+        Voucher Generated: ${esc(formatDate(new Date().toISOString(), true))}<br/>
         Status: ${esc(order.status)}
       </div>
     </header>

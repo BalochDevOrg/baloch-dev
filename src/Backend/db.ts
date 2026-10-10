@@ -8,10 +8,10 @@
  */
 import type {
   Address, CanonicalOrderStatus, Category, Conversation, DBState, Message, Notification, Order,
-  OrderStatus, OrderStatusHistory, Product, Profile, Report, Review, Role, Store,
+  OrderStatus, OrderStatusHistory, Product, Profile, Report, Review, Role, SellerBankDetails, SellerSubscription, Store,
 } from './types'
 import { getSupabase, isSupabaseConfigured, clearStoredAuthTokens } from './supabase'
-import { normalizeOrderStatus, slugify } from './util'
+import { isUuid, normalizeOrderStatus, slugify } from './util'
 
 const nowIso = () => new Date().toISOString()
 const ACTIVE_STORE_KEY = 'beh-active-store'
@@ -83,9 +83,58 @@ function emitChange() {
   listeners.forEach((l) => l())
 }
 
+export function parseLocation(raw?: string): { city: string; country: string } {
+  if (!raw || !raw.trim()) return { city: 'Balochistan', country: 'Pakistan' }
+  const parts = raw.split(',').map((s) => s.trim()).filter(Boolean)
+  if (parts.length >= 2) {
+    return { city: parts[0], country: parts.slice(1).join(', ') }
+  }
+  return { city: parts[0], country: 'Pakistan' }
+}
+
+export function normalizeProfile(p: any): Profile {
+  if (!p) return p
+  const loc = p.location || [p.city, p.country].filter(Boolean).join(', ') || 'Balochistan, Pakistan'
+  return { ...p, location: loc }
+}
+
+export function normalizeProduct(p: any): Product {
+  if (!p) return p
+  const catSlug = p.category_slug || (p.category_id && cache.categories.find((c) => c.id === p.category_id)?.slug) || ''
+  const firstImage = p.image || (Array.isArray(p.images) && p.images.length > 0 ? p.images[0] : '') || '/images/doch-closeup.jpg'
+  const stockVal = typeof p.stock === 'number' ? p.stock : (typeof p.quantity === 'number' ? p.quantity : 10)
+  const statusVal = p.status === 'approved' ? 'active' : (p.status || 'active')
+  const storeId = (p.store_id && isUuid(p.store_id)) ? p.store_id : (p.store_id || '')
+  return {
+    id: p.id,
+    store_id: storeId,
+    seller_id: p.seller_id,
+    name: p.name || 'Untitled Product',
+    description: p.description || '',
+    price: Number(p.price) || 0,
+    currency: p.currency || 'PKR',
+    image: firstImage,
+    category_slug: catSlug,
+    stock: stockVal,
+    condition: p.condition || 'new',
+    location: p.location || 'Balochistan, Pakistan',
+    shipping_fee: Number(p.shipping_fee) || 250,
+    shipping_days: p.shipping_days || '3-5 days',
+    tags: Array.isArray(p.tags) ? p.tags : [],
+    rating: Number(p.rating) || 5.0,
+    review_count: Number(p.review_count) || 0,
+    status: statusVal,
+    sold: Number(p.sold) || 0,
+    created_at: p.created_at || new Date().toISOString(),
+  }
+}
+
 /** Cached profile for synchronous auth.session(). Set by providers. */
 let _cachedProfile: Profile | null = null
-export function _setCachedProfile(p: Profile | null) { _cachedProfile = p }
+export function _setCachedProfile(raw: Profile | null) {
+  const p = normalizeProfile(raw)
+  _cachedProfile = p
+}
 
 /* ════════════════════════════════════════════════════════════════
    INIT — populate cache from Supabase
@@ -110,13 +159,19 @@ export async function initDb() {
       supabase.from('public_profiles').select('*'),
     ])
     cache.categories = (catRes.data ?? []) as Category[]
-    cache.stores = (storeRes.data ?? []) as Store[]
-    cache.products = (prodRes.data ?? []) as Product[]
+    cache.products = (prodRes.data ?? []).map(normalizeProduct)
     if (settingsRes.data) cache.settings = settingsRes.data as any
     cache.reports = (reportRes.data ?? []) as Report[]
     cache.messages = (msgRes.data ?? []) as Message[]
     cache.conversations = (convRes.data ?? []) as Conversation[]
-    cache.profiles = (profileRes.data ?? []) as Profile[]
+
+    let profilesData = (profileRes.data ?? []) as Profile[]
+    if (profilesData.length === 0) {
+      const { data: pData } = await supabase.from('profiles').select('*')
+      profilesData = (pData ?? []) as Profile[]
+    }
+    cache.profiles = profilesData.map(normalizeProfile)
+    cache.stores = ((storeRes.data ?? []) as Store[]).filter((s) => isUuid(s.id))
 
     subscribeRealtime()
     emitChange()
@@ -129,7 +184,7 @@ export async function initUserCache(userId: string) {
   if (!isSupabaseConfigured) return
   try {
     const supabase = getSupabase()
-    const [cartRes, wishRes, addrRes, notifRes, convRes, revRes, profileRes] = await Promise.all([
+    const [cartRes, wishRes, addrRes, notifRes, convRes, revRes, profileRes, storeRes] = await Promise.all([
       supabase.from('cart_items').select('*').eq('user_id', userId),
       supabase.from('wishlist').select('*').eq('user_id', userId),
       supabase.from('addresses').select('*').eq('user_id', userId),
@@ -137,6 +192,7 @@ export async function initUserCache(userId: string) {
       supabase.from('conversations').select('*').or(`buyer_id.eq.${userId},seller_id.eq.${userId}`),
       supabase.from('reviews').select('*'),
       supabase.from('public_profiles').select('*'),
+      supabase.from('seller_stores').select('*'),
     ])
 
     cache.cart = (cartRes.data ?? []) as any
@@ -145,7 +201,15 @@ export async function initUserCache(userId: string) {
     cache.notifications = (notifRes.data ?? []) as Notification[]
     cache.conversations = (convRes.data ?? []) as Conversation[]
     cache.reviews = (revRes.data ?? []) as Review[]
-    cache.profiles = (profileRes.data ?? []) as Profile[]
+    let userProfilesData = (profileRes.data ?? []) as Profile[]
+    if (userProfilesData.length === 0) {
+      const { data: pData } = await supabase.from('profiles').select('*')
+      userProfilesData = (pData ?? []) as Profile[]
+    }
+    cache.profiles = userProfilesData.map(normalizeProfile)
+    if (storeRes.data && storeRes.data.length > 0) {
+      cache.stores = (storeRes.data as Store[]).filter((s) => isUuid(s.id))
+    }
 
     const convIds = cache.conversations.map((c) => c.id)
     if (convIds.length > 0) {
@@ -302,7 +366,7 @@ export async function refreshAll() {
       supabase.from('categories').select('*').order('name'),
       supabase.from('platform_settings').select('*').eq('id', 1).single(),
     ])
-    cache.products = (prodRes.data ?? []) as Product[]
+    cache.products = (prodRes.data ?? []).map(normalizeProduct)
     cache.stores = (storeRes.data ?? []) as Store[]
     cache.categories = (catRes.data ?? []) as Category[]
     if (settingsRes.data) cache.settings = settingsRes.data as any
@@ -472,10 +536,17 @@ export const auth = {
 
   async updateProfile(userId: string, patch: Partial<Profile>) {
     const supabase = getSupabase()
-    await supabase.from('profiles').update(patch).eq('id', userId)
-    if (_cachedProfile?.id === userId) _cachedProfile = { ..._cachedProfile, ...patch }
+    const { location, ...dbPatch } = patch
+    if (location !== undefined) {
+      const { city, country } = parseLocation(location)
+      ;(dbPatch as any).city = city
+      ;(dbPatch as any).country = country
+    }
+    await supabase.from('profiles').update(dbPatch).eq('id', userId)
+    const normalized = normalizeProfile({ ...(_cachedProfile?.id === userId ? _cachedProfile : {}), ...patch })
+    if (_cachedProfile?.id === userId) _cachedProfile = normalized
     const idx = cache.profiles.findIndex((p) => p.id === userId)
-    if (idx >= 0) cache.profiles[idx] = { ...cache.profiles[idx], ...patch }
+    if (idx >= 0) cache.profiles[idx] = { ...cache.profiles[idx], ...normalized }
     emitChange()
   },
 
@@ -487,38 +558,176 @@ export const auth = {
 
   async becomeSeller(userId: string, data: { name: string; description: string; category: string; location: string; logo_color?: string; banner?: string }): Promise<{ ok: boolean; error?: string; store?: Store }> {
     const supabase = getSupabase()
-    const { data: existingRows } = await supabase.from('seller_stores').select('id, deleted_at').eq('seller_id', userId)
-    const liveCount = (existingRows ?? []).filter((s) => !s.deleted_at).length
-    if (liveCount >= 2) return { ok: false, error: 'You can create a maximum of 2 stores per account.' }
-    const { data: settings } = await supabase.from('platform_settings').select('auto_approve_stores').eq('id', 1).single()
-    let slug = slugify(data.name)
-    const { data: slugExists } = await supabase.from('seller_stores').select('id').eq('slug', slug).maybeSingle()
-    if (slugExists) slug = `${slug}-${Math.floor(Math.random() * 900 + 100)}`
-    const storeData = {
-      seller_id: userId, name: data.name.trim(), slug, description: data.description.trim(),
-      category_slugs: [data.category], logo_color: data.logo_color ?? '#0d7d76',
-      logo_initials: data.name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join(''),
-      banner: data.banner, location: data.location, is_approved: settings?.auto_approve_stores ?? false,
+
+    // 1. Verify user authentication & identity
+    const { data: authData, error: authErr } = await supabase.auth.getUser()
+    if (authErr || !authData?.user || authData.user.id !== userId) {
+      return { ok: false, error: 'Authentication required. Please sign in to submit your store.' }
     }
-    const { data: store, error } = await supabase.from('seller_stores').insert(storeData).select('*').single()
-    if (error) {
-      const msg = error.message.includes('maximum of 2 stores')
-        ? 'You can create a maximum of 2 stores per account.'
-        : error.message
-      return { ok: false, error: msg }
+
+    // 2. Validate required fields
+    const trimmedName = (data.name || '').trim()
+    const trimmedDesc = (data.description || '').trim()
+    const trimmedCat = (data.category || '').trim() || 'handmade-products'
+    const trimmedLoc = (data.location || '').trim() || 'Balochistan, Pakistan'
+
+    if (!trimmedName || !trimmedDesc) {
+      return { ok: false, error: 'Please provide both a store name and description.' }
     }
-    await supabase.from('profiles').update({ role: 'seller' }).eq('id', userId)
-    if (_cachedProfile?.id === userId) _cachedProfile.role = 'seller'
-    await supabase.from('notifications').insert({ user_id: userId, type: 'store', title: store.is_approved ? 'Your store is live! 🎉' : 'Store submitted for approval', body: store.is_approved ? `${store.name} is now live.` : `${store.name} is under review.` })
-    const { data: admins } = await supabase.from('public_profiles').select('id').eq('role', 'admin')
-    for (const admin of (admins ?? [])) {
-      await supabase.from('notifications').insert({ user_id: admin.id, type: 'store', title: 'New store awaiting approval', body: `${_cachedProfile?.full_name ?? 'A user'} submitted "${store.name}".` })
+
+    // 3. Check store limit (maximum 2 stores per user) locally in cache
+    const liveLocalStores = cache.stores.filter((s) => s.seller_id === userId && aliveStore(s))
+    if (liveLocalStores.length >= 2) {
+      return { ok: false, error: 'Store limit reached: each seller can create a maximum of 2 active stores.' }
     }
-    // Update local cache
-    cache.stores.push(store as Store)
-    try { localStorage.setItem(ACTIVE_STORE_KEY, store.id) } catch { /* noop */ }
+
+    // 4. Probe remote seller_stores table if it exists
+    let hasSellerStoresTable = true
+    let existingRemoteStores: any[] | null = null
+    try {
+      const { data: rows, error: checkErr } = await supabase
+        .from('seller_stores')
+        .select('id, deleted_at')
+        .eq('seller_id', userId)
+
+      if (checkErr) {
+        if (checkErr.code === 'PGRST205' || checkErr.message?.includes('not find')) {
+          hasSellerStoresTable = false
+        }
+      } else {
+        existingRemoteStores = rows
+      }
+    } catch {
+      hasSellerStoresTable = false
+    }
+
+    if (hasSellerStoresTable && existingRemoteStores) {
+      const activeCount = existingRemoteStores.filter((s) => !s.deleted_at).length
+      if (activeCount >= 2) {
+        return { ok: false, error: 'Store limit reached: each seller can create a maximum of 2 active stores.' }
+      }
+    }
+
+    let createdStore: Store | null = null
+
+    // 5. Try inserting into seller_stores if table is present
+    if (hasSellerStoresTable) {
+      let autoApprove = false
+      try {
+        const { data: settings } = await supabase.from('platform_settings').select('auto_approve_stores').eq('id', 1).maybeSingle()
+        if (settings?.auto_approve_stores) autoApprove = true
+      } catch { /* platform_settings might be missing */ }
+
+      let slug = slugify(trimmedName)
+      try {
+        const { data: slugExists } = await supabase.from('seller_stores').select('id').eq('slug', slug).maybeSingle()
+        if (slugExists) slug = `${slug}-${Math.floor(Math.random() * 900 + 100)}`
+      } catch { /* ignore */ }
+
+      const storeData = {
+        seller_id: userId,
+        name: trimmedName,
+        slug,
+        description: trimmedDesc,
+        category_slugs: [trimmedCat],
+        logo_color: data.logo_color ?? '#0d7d76',
+        logo_initials: trimmedName.split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase(),
+        banner: data.banner,
+        location: trimmedLoc,
+        is_approved: autoApprove,
+      }
+
+      const { data: store, error: insertErr } = await supabase.from('seller_stores').insert(storeData).select('*').single()
+
+      if (insertErr) {
+        if (insertErr.code === 'PGRST205' || insertErr.message?.includes('not find')) {
+          hasSellerStoresTable = false
+        } else {
+          const msg = insertErr.message?.toLowerCase().includes('limit') || insertErr.message?.toLowerCase().includes('maximum')
+            ? 'Store limit reached: each seller can create a maximum of 2 active stores.'
+            : insertErr.message || 'Failed to create store record.'
+          return { ok: false, error: msg }
+        }
+      } else if (store) {
+        createdStore = store as Store
+      }
+    }
+
+    if (!createdStore) {
+      return { ok: false, error: 'Failed to create store record in database.' }
+    }
+
+    // 7. Update profiles role & cached profile (never demote admins)
+    try {
+      const { data: curProf } = await supabase.from('profiles').select('role').eq('id', userId).maybeSingle()
+      if (curProf?.role !== 'admin') {
+        await supabase.from('profiles').update({ role: 'seller' }).eq('id', userId)
+        if (_cachedProfile && _cachedProfile.id === userId) {
+          _cachedProfile.role = 'seller'
+        }
+        const profIdx = cache.profiles.findIndex((p) => p.id === userId)
+        if (profIdx >= 0) {
+          cache.profiles[profIdx].role = 'seller'
+        }
+      }
+    } catch { /* non-fatal */ }
+
+    if (_cachedProfile && _cachedProfile.id === userId) {
+      ;(_cachedProfile as any).store_name = trimmedName
+      ;(_cachedProfile as any).store_description = trimmedDesc
+    }
+    const profIdx = cache.profiles.findIndex((p) => p.id === userId)
+    if (profIdx >= 0) {
+      ;(cache.profiles[profIdx] as any).store_name = trimmedName
+      ;(cache.profiles[profIdx] as any).store_description = trimmedDesc
+    }
+
+    // 8. Send notification safely (non-fatal if schema varies)
+    try {
+      const notifTitle = createdStore.is_approved ? 'Your store is live! 🎉' : 'Store submitted for approval'
+      const notifMsg = createdStore.is_approved ? `${createdStore.name} is now live.` : `${createdStore.name} is under review.`
+      await supabase.from('notifications').insert({
+        user_id: userId,
+        type: 'store',
+        title: notifTitle,
+        message: notifMsg,
+        body: notifMsg,
+        href: '/seller',
+        link: '/seller',
+        read: false,
+        is_read: false,
+      })
+
+      const { data: admins } = await supabase.from('profiles').select('id').eq('role', 'admin')
+      if (admins && admins.length > 0) {
+        for (const admin of admins) {
+          await supabase.from('notifications').insert({
+            user_id: admin.id,
+            type: 'store',
+            title: 'New store awaiting approval',
+            message: `${_cachedProfile?.full_name ?? 'A user'} submitted "${createdStore.name}".`,
+            body: `${_cachedProfile?.full_name ?? 'A user'} submitted "${createdStore.name}".`,
+            href: '/admin/sellers',
+            link: '/admin/sellers',
+            read: false,
+            is_read: false,
+          })
+        }
+      }
+    } catch { /* Non-fatal */ }
+
+    // 9. Update stores cache and set active store
+    const existingIdx = cache.stores.findIndex((s) => s.id === createdStore!.id)
+    if (existingIdx >= 0) {
+      cache.stores[existingIdx] = createdStore
+    } else {
+      cache.stores.push(createdStore)
+    }
+
+    try { localStorage.setItem(ACTIVE_STORE_KEY, createdStore.id) } catch { /* noop */ }
     emitChange()
-    return { ok: true, store: store as Store }
+
+    return { ok: true, store: createdStore }
   },
 }
 
@@ -555,50 +764,94 @@ export const categories = {
    ════════════════════════════════════════════════════════════════ */
 
 export const stores = {
-  listApproved: () => cache.stores.filter((s) => s.is_approved && aliveStore(s) && !s.blocked),
-  listAll: () => cache.stores,
-  listBySeller: (sellerId: string) => cache.stores.filter((s) => s.seller_id === sellerId && aliveStore(s)),
-  bySlug: (slug: string) => cache.stores.find((s) => s.slug === slug && aliveStore(s)),
-  byId: (id: string) => cache.stores.find((s) => s.id === id),
-  bySeller: (sellerId: string) => cache.stores.find((s) => s.seller_id === sellerId && aliveStore(s)),
+  listApproved: () => cache.stores.filter((s) => s.is_approved && aliveStore(s) && !s.blocked && isUuid(s.id)),
+  listAll: () => cache.stores.filter((s) => isUuid(s.id)),
+  listBySeller: (sellerId: string) => cache.stores.filter((s) => s.seller_id === sellerId && aliveStore(s) && isUuid(s.id)),
+  bySlug: (slug: string) => cache.stores.find((s) => s.slug === slug && aliveStore(s) && isUuid(s.id)),
+  byId: (id: string) => cache.stores.find((s) => s.id === id && isUuid(s.id)),
+  bySeller: (sellerId: string) => cache.stores.find((s) => s.seller_id === sellerId && aliveStore(s) && isUuid(s.id)),
   activeId(): string | null {
-    try { return localStorage.getItem(ACTIVE_STORE_KEY) } catch { return null }
+    try {
+      const val = localStorage.getItem(ACTIVE_STORE_KEY)
+      return val && isUuid(val) ? val : null
+    } catch { return null }
   },
   setActive(id: string) {
+    if (!isUuid(id)) return
     try { localStorage.setItem(ACTIVE_STORE_KEY, id) } catch { /* noop */ }
     emitChange()
   },
   activeFor(sellerId: string): Store | undefined {
     const owned = stores.listBySeller(sellerId)
     const saved = stores.activeId()
-    return owned.find((s) => s.id === saved) ?? owned[0]
+    const active = (saved ? owned.find((s) => s.id === saved) : undefined) ?? owned[0]
+    if (active && saved !== active.id) {
+      try { localStorage.setItem(ACTIVE_STORE_KEY, active.id) } catch { /* noop */ }
+    }
+    return active
   },
   async update(id: string, patch: Partial<Store>) {
     const supabase = getSupabase()
-    await supabase.from('seller_stores').update(patch).eq('id', id)
+    const { error } = await supabase.from('seller_stores').update(patch).eq('id', id)
+    if (error && (error.code === 'PGRST205' || id.startsWith('store-'))) {
+      const sellerId = id.startsWith('store-') ? id.replace('store-', '') : undefined
+      if (sellerId) {
+        const profPatch: any = {}
+        if (patch.name) profPatch.store_name = patch.name
+        if (patch.description) profPatch.store_description = patch.description
+        if (patch.banner) profPatch.store_logo = patch.banner
+        if (patch.location) {
+          const { city, country } = parseLocation(patch.location)
+          profPatch.city = city
+          profPatch.country = country
+        }
+        await supabase.from('profiles').update(profPatch).eq('id', sellerId)
+      }
+    }
     const idx = cache.stores.findIndex((x) => x.id === id)
     if (idx >= 0) cache.stores[idx] = { ...cache.stores[idx], ...patch }
     emitChange()
   },
   async setApproved(id: string, approved: boolean, actor?: Profile) {
-    const supabase = getSupabase()
-    await supabase.from('seller_stores').update({ is_approved: approved }).eq('id', id)
-    if (approved) await supabase.from('products').update({ status: 'active' }).eq('store_id', id).eq('status', 'pending')
-    const { data: store } = await supabase.from('seller_stores').select('seller_id, name').eq('id', id).single()
-    if (store) {
-      await supabase.from('notifications').insert({ user_id: store.seller_id, type: 'store', title: approved ? 'Your store has been approved 🎉' : 'Store approval withdrawn', body: approved ? `${store.name} is live.` : `Please contact support.` })
+    if (approved) {
+      await stores.approve(id)
+    } else {
+      await stores.reject(id, 'Store suspended by administrator')
     }
-    // Refresh cache
-    const { data: allStores } = await supabase.from('seller_stores').select('*')
-    cache.stores = (allStores ?? []) as Store[]
-    const { data: allProds } = await supabase.from('products').select('*')
-    cache.products = (allProds ?? []) as Product[]
-    emitChange()
     void actor
+  },
+  async approve(id: string) {
+    const supabase = getSupabase()
+    const { error } = await supabase.rpc('approve_seller_store', { p_store_id: id })
+    if (error) {
+      // Fallback direct update
+      await supabase.from('seller_stores').update({ is_approved: true, status: 'approved' }).eq('id', id)
+      const st = cache.stores.find((s) => s.id === id)
+      if (st?.seller_id) {
+        await supabase.from('profiles').update({ seller_status: 'approved', seller_approved_at: new Date().toISOString() }).eq('id', st.seller_id)
+      }
+    }
+    await refreshAll()
+    emitChange()
+  },
+  async reject(id: string, reason = 'Store application declined') {
+    const supabase = getSupabase()
+    const { error } = await supabase.rpc('reject_seller_store', { p_store_id: id, p_reason: reason })
+    if (error) {
+      // Fallback direct update
+      await supabase.from('seller_stores').update({ is_approved: false, status: 'rejected', rejection_reason: reason }).eq('id', id)
+    }
+    await refreshAll()
+    emitChange()
   },
   async setBlocked(id: string, blocked: boolean) {
     const supabase = getSupabase()
     await supabase.from('seller_stores').update({ blocked }).eq('id', id)
+    const sellerId = id.startsWith('store-') ? id.replace('store-', '') : cache.stores.find((s) => s.id === id)?.seller_id
+    if (sellerId) {
+      await supabase.from('profiles').update({ is_blocked: blocked }).eq('id', sellerId)
+      const u = cache.profiles.find((p) => p.id === sellerId); if (u) u.is_blocked = blocked
+    }
     const idx = cache.stores.findIndex((x) => x.id === id)
     if (idx >= 0) cache.stores[idx] = { ...cache.stores[idx], blocked }
     emitChange()
@@ -629,10 +882,14 @@ export const products = {
   byId: (id: string) => cache.products.find((p) => p.id === id),
 
   list(filter: ProductFilter = {}): Product[] {
-    let out = cache.products.filter((p) =>
-      filter.storeId ? true : (filter.includeHidden ? true : p.status === 'active'),
-    )
-    if (filter.storeId) out = cache.products.filter((p) => p.store_id === filter.storeId)
+    let out = cache.products.filter((p) => {
+      if (filter.storeId) return p.store_id === filter.storeId
+      if (filter.includeHidden) return true
+      if (p.status !== 'active') return false
+      // Only display products from approved, active stores in the public marketplace
+      const store = cache.stores.find((st) => st.id === p.store_id || (p.seller_id && st.seller_id === p.seller_id))
+      return !!store && store.is_approved && !store.deleted_at && !store.blocked
+    })
     if (filter.q) {
       const q = filter.q.toLowerCase()
       out = out.filter((p) => {
@@ -655,25 +912,96 @@ export const products = {
     return out
   },
 
-  async create(data: Omit<Product, 'id' | 'created_at' | 'rating' | 'review_count' | 'sold' | 'status'> & { status?: Product['status'] }): Promise<Product> {
+  async create(data: Omit<Product, 'id' | 'created_at' | 'rating' | 'review_count' | 'sold' | 'status'> & { status?: Product['status']; images?: string[] }): Promise<Product> {
     const supabase = getSupabase()
-    const store = cache.stores.find((st) => st.id === data.store_id)
-    const payload = { ...data, rating: 0, review_count: 0, sold: 0, status: data.status ?? (store?.is_approved ? 'active' : 'pending') }
+
+    // 1. Resolve a guaranteed valid UUID store_id
+    let realStoreId: string | null = null
+    if (data.store_id && isUuid(data.store_id)) {
+      realStoreId = data.store_id
+    } else if (data.seller_id) {
+      const activeSt = stores.activeFor(data.seller_id)
+      if (activeSt && isUuid(activeSt.id)) {
+        realStoreId = activeSt.id
+      } else {
+        const { data: dbStores } = await supabase.from('seller_stores').select('id, is_approved').eq('seller_id', data.seller_id).limit(1)
+        if (dbStores && dbStores[0] && isUuid(dbStores[0].id)) {
+          realStoreId = dbStores[0].id
+        }
+      }
+    }
+
+    if (!realStoreId) {
+      throw new Error('Please create and select a store before adding products.')
+    }
+
+    const store = cache.stores.find((st) => st.id === realStoreId)
+    const rawStock = Math.max(0, Number(data.stock ?? 1))
+    const imagesArr = Array.isArray(data.images) && data.images.length > 0
+      ? data.images
+      : (data.image ? [data.image] : ['/images/doch-closeup.jpg'])
+    const firstImage = imagesArr[0] || data.image || '/images/doch-closeup.jpg'
+    const statusVal = (store && store.is_approved) ? (data.status ?? 'active') : 'pending'
+
+    // 2. Resolve category_id from category_slug
+    let catId: string | null = null
+    if (data.category_slug) {
+      const cat = cache.categories.find((c) => c.slug === data.category_slug)
+      if (cat && isUuid(cat.id)) catId = cat.id
+    }
+
+    const payload: any = {
+      ...data,
+      store_id: realStoreId,
+      category_id: catId,
+      stock: rawStock,
+      quantity: rawStock,
+      image: firstImage,
+      images: imagesArr,
+      rating: 0,
+      review_count: 0,
+      sold: 0,
+      status: statusVal,
+    }
     const { data: product, error } = await supabase.from('products').insert(payload).select('*').single()
     if (error || !product) throw new Error(error?.message || 'Could not create the product.')
-    cache.products.push(product as Product)
+    const normalized = normalizeProduct(product)
+    cache.products.push(normalized)
     emitChange()
-    if ((product as Product).status === 'active') void dispatchOutbox()
-    return product as Product
+    if (normalized.status === 'active') void dispatchOutbox()
+    return normalized
   },
 
-  async update(id: string, patch: Partial<Product>) {
+  async reload() {
     const supabase = getSupabase()
-    await supabase.from('products').update(patch).eq('id', id)
+    const { data } = await supabase.from('products').select('*')
+    if (data) {
+      cache.products = data.map(normalizeProduct)
+      emitChange()
+    }
+  },
+
+  async update(id: string, patch: Partial<Product> & { images?: string[] }) {
+    const supabase = getSupabase()
+    const payload: any = { ...patch }
+    if (patch.stock !== undefined) {
+      payload.stock = Math.max(0, Number(patch.stock))
+      payload.quantity = payload.stock
+    }
+    if (patch.images !== undefined || patch.image !== undefined) {
+      const imagesArr = Array.isArray(patch.images) && patch.images.length > 0
+        ? patch.images
+        : (patch.image ? [patch.image] : undefined)
+      if (imagesArr) {
+        payload.images = imagesArr
+        payload.image = imagesArr[0]
+      }
+    }
+    await supabase.from('products').update(payload).eq('id', id)
     const idx = cache.products.findIndex((x) => x.id === id)
-    if (idx >= 0) cache.products[idx] = { ...cache.products[idx], ...patch }
+    if (idx >= 0) cache.products[idx] = { ...cache.products[idx], ...payload }
     emitChange()
-    if (patch.status === 'active') void dispatchOutbox()
+    if (payload.status === 'active') void dispatchOutbox()
   },
 
   async remove(id: string) {
@@ -712,10 +1040,10 @@ export const cart = {
     const supabase = getSupabase()
     const existing = cache.cart.find((c) => c.user_id === userId && c.product_id === productId)
     if (existing) {
-      await supabase.from('cart_items').update({ qty: existing.qty + qty }).eq('id', existing.id)
+      await supabase.from('cart_items').update({ qty: existing.qty + qty, quantity: existing.qty + qty }).eq('id', existing.id)
       existing.qty += qty
     } else {
-      const { data } = await supabase.from('cart_items').insert({ user_id: userId, product_id: productId, qty }).select('*').single()
+      const { data } = await supabase.from('cart_items').insert({ user_id: userId, product_id: productId, qty, quantity: qty }).select('*').single()
       if (data) cache.cart.push(data as any)
     }
     emitChange()
@@ -723,7 +1051,11 @@ export const cart = {
   async setQty(userId: string, productId: string, qty: number) {
     const supabase = getSupabase()
     const c = cache.cart.find((x) => x.user_id === userId && x.product_id === productId)
-    if (c) { c.qty = Math.max(1, qty); await supabase.from('cart_items').update({ qty: c.qty }).eq('id', c.id); emitChange() }
+    if (c) {
+      c.qty = Math.max(1, qty)
+      await supabase.from('cart_items').update({ qty: c.qty, quantity: c.qty }).eq('id', c.id)
+      emitChange()
+    }
   },
   async remove(userId: string, productId: string) {
     const supabase = getSupabase()
@@ -892,6 +1224,38 @@ export const orders = {
     await refreshOrders()
     emitChange()
   },
+
+  async confirmPayment(orderId: string) {
+    const supabase = getSupabase()
+    const { error } = await supabase.rpc('admin_confirm_payment', { p_order_id: orderId, p_status: 'paid' })
+    if (error) {
+      const { error: updErr } = await supabase.from('orders').update({ payment: 'paid' }).eq('id', orderId)
+      if (updErr) {
+        console.error('[orders] confirmPayment fallback failed', updErr)
+        throw new Error(updErr.message)
+      }
+      await supabase.from('payments').update({ status: 'paid' }).eq('order_id', orderId)
+      await supabase.from('payment_transactions').update({ status: 'verified', updated_at: new Date().toISOString() }).eq('order_id', orderId)
+    }
+    await refreshOrders()
+    emitChange()
+  },
+
+  async rejectPayment(orderId: string, reason = 'Payment verification rejected by admin') {
+    const supabase = getSupabase()
+    const { error } = await supabase.rpc('admin_confirm_payment', { p_order_id: orderId, p_status: 'failed', p_note: reason })
+    if (error) {
+      const { error: updErr } = await supabase.from('orders').update({ payment: 'pending' }).eq('id', orderId)
+      if (updErr) {
+        console.error('[orders] rejectPayment fallback failed', updErr)
+        throw new Error(updErr.message)
+      }
+      await supabase.from('payments').update({ status: 'failed' }).eq('order_id', orderId)
+      await supabase.from('payment_transactions').update({ status: 'rejected', updated_at: new Date().toISOString() }).eq('order_id', orderId)
+    }
+    await refreshOrders()
+    emitChange()
+  },
 }
 
 /* ════════════════════════════════════════════════════════════════
@@ -968,53 +1332,95 @@ export const messaging = {
 
   async start(input: { buyerId: string; sellerId: string; productId?: string; storeId?: string; orderCode?: string; body: string }): Promise<Conversation> {
     const supabase = getSupabase()
+    const validStoreId = input.storeId && isUuid(input.storeId) ? input.storeId : null
+    const validProdId = input.productId && isUuid(input.productId) ? input.productId : null
     const existing = cache.conversations.find((c) =>
-      c.buyer_id === input.buyerId && c.seller_id === input.sellerId && (input.storeId ? c.store_id === input.storeId || !c.store_id : true),
+      c.buyer_id === input.buyerId && c.seller_id === input.sellerId && (validStoreId ? c.store_id === validStoreId : true),
     )
     let convId = existing?.id
     if (!convId) {
-      const { data: conv } = await supabase.from('conversations').insert({
-        buyer_id: input.buyerId, seller_id: input.sellerId, product_id: input.productId,
-        store_id: input.storeId ?? null, order_code: input.orderCode,
-      }).select('*').single()
-      convId = conv!.id
-      cache.conversations.push(conv as Conversation)
+      const { data: dbExisting } = await supabase.from('conversations')
+        .select('*')
+        .eq('buyer_id', input.buyerId)
+        .eq('seller_id', input.sellerId)
+        .maybeSingle()
+      if (dbExisting) {
+        convId = dbExisting.id
+        if (!cache.conversations.some((c) => c.id === convId)) cache.conversations.push(dbExisting as Conversation)
+      } else {
+        const { data: conv, error: convErr } = await supabase.from('conversations').insert({
+          buyer_id: input.buyerId,
+          seller_id: input.sellerId,
+          product_id: validProdId,
+          store_id: validStoreId,
+          order_code: input.orderCode || null,
+        }).select('*').single()
+        if (convErr || !conv) throw new Error(convErr?.message || 'Could not start conversation.')
+        convId = conv.id
+        cache.conversations.push(conv as Conversation)
+      }
     }
     await messaging.send(convId!, input.buyerId, input.body)
-    return messaging.byId(convId!)!
+    return messaging.byId(convId!) || cache.conversations.find((c) => c.id === convId)!
   },
 
   async send(conversationId: string, senderId: string, body: string): Promise<Message> {
+    const trimmed = body.trim()
+    if (!trimmed) throw new Error('Message cannot be empty.')
     const supabase = getSupabase()
-    const { data: msg } = await supabase.from('messages').insert({ conversation_id: conversationId, sender_id: senderId, body: body.trim() }).select('*').single()
+
+    let conv = cache.conversations.find((x) => x.id === conversationId)
+    if (!conv) {
+      const { data: dbConv } = await supabase.from('conversations').select('*').eq('id', conversationId).maybeSingle()
+      if (dbConv) {
+        conv = dbConv as Conversation
+        cache.conversations.push(conv)
+      }
+    }
+    const receiverId = conv ? (conv.buyer_id === senderId ? conv.seller_id : conv.buyer_id) : undefined
+
+    const { data: msg, error } = await supabase.from('messages').insert({
+      conversation_id: conversationId,
+      sender_id: senderId,
+      receiver_id: receiverId,
+      body: trimmed,
+      content: trimmed,
+    }).select('*').single()
+
+    if (error || !msg) {
+      console.error('[messaging.send] error:', error)
+      throw new Error(error?.message || 'Could not send message.')
+    }
     cache.messages.push(msg as Message)
-    // Update conversation last_at and unread counters
-    const conv = cache.conversations.find((x) => x.id === conversationId)
     if (conv) {
-      conv.last_at = msg!.created_at
+      conv.last_at = msg.created_at
       if (senderId === conv.buyer_id) { conv.seller_unread += 1; conv.buyer_unread = 0 }
       else { conv.buyer_unread += 1; conv.seller_unread = 0 }
     }
-    // Fetch sender profile for notifications
-    if (!_cachedProfile || _cachedProfile.id !== senderId) {
-      const { data: senderProfile } = await supabase.from('public_profiles').select('*').eq('id', senderId).single()
-      if (senderProfile && !cache.profiles.find((p) => p.id === senderId)) {
-        cache.profiles.push(senderProfile as Profile)
-      }
-    }
-    // Trigger the on_message_sent trigger already handles notifications + unread counters in DB
-    // But we also update local cache for immediate UI update
-    const recipient = senderId === conv?.buyer_id ? conv.seller_id : conv?.buyer_id
-    const senderName = _cachedProfile?.id === senderId ? _cachedProfile.full_name : cache.profiles.find((p) => p.id === senderId)?.full_name ?? 'a user'
-    if (recipient && recipient === _cachedProfile?.id) {
-      cache.notifications.unshift({
-        id: `n-${Date.now().toString(36)}`, user_id: recipient, type: 'message',
-        title: `New message from ${senderName}`, body: body.trim().slice(0, 90),
-        read: false, created_at: nowIso(),
-      })
-    }
     emitChange()
     return msg as Message
+  },
+
+  async reload(userId: string) {
+    const supabase = getSupabase()
+    const { data: convs } = await supabase.from('conversations')
+      .select('*')
+      .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`)
+      .order('last_at', { ascending: false })
+    if (convs) {
+      cache.conversations = convs as Conversation[]
+      const convIds = convs.map((c) => c.id)
+      if (convIds.length > 0) {
+        const { data: msgs } = await supabase.from('messages')
+          .select('*')
+          .in('conversation_id', convIds)
+          .order('created_at', { ascending: true })
+        if (msgs) {
+          cache.messages = msgs as Message[]
+        }
+      }
+      emitChange()
+    }
   },
 
   async markRead(conversationId: string, userId: string) {
@@ -1048,19 +1454,29 @@ export const notifications = {
   unreadCount: (userId: string) => cache.notifications.filter((n) => n.user_id === userId && !n.read).length,
   async markRead(id: string) {
     const supabase = getSupabase()
-    await supabase.from('notifications').update({ read: true }).eq('id', id)
+    await supabase.from('notifications').update({ read: true, is_read: true }).eq('id', id)
     const n = cache.notifications.find((x) => x.id === id); if (n) n.read = true
     emitChange()
   },
   async markAllRead(userId: string) {
     const supabase = getSupabase()
-    await supabase.from('notifications').update({ read: true }).eq('user_id', userId).eq('read', false)
+    await supabase.from('notifications').update({ read: true, is_read: true }).eq('user_id', userId)
     cache.notifications.forEach((n) => { if (n.user_id === userId) n.read = true })
     emitChange()
   },
-  async push(input: { user_id: string; type: Notification['type']; title: string; body: string }) {
+  async push(input: { user_id: string; type: Notification['type']; title: string; body: string; href?: string }) {
     const supabase = getSupabase()
-    const { data } = await supabase.from('notifications').insert({ ...input, read: false }).select('*').single()
+    const { data } = await supabase.from('notifications').insert({
+      user_id: input.user_id,
+      type: input.type,
+      title: input.title,
+      body: input.body,
+      message: input.body,
+      href: input.href,
+      link: input.href,
+      read: false,
+      is_read: false,
+    }).select('*').single()
     if (data) cache.notifications.unshift(data as Notification)
     emitChange()
   },
@@ -1108,19 +1524,30 @@ export async function ensureAdminData() {
   if (!isSupabaseConfigured) return
   try {
     const supabase = getSupabase()
-    const [{ data: profiles }, { data: settings }, storesRes, reviewsRes] = await Promise.all([
+    const [{ data: profiles }, { data: settingsData }, storesRes, reviewsRes] = await Promise.all([
       supabase.from('public_profiles').select('*'),
       supabase.from('platform_settings').select('*').eq('id', 1).single(),
       supabase.from('seller_stores').select('*'),
       supabase.from('reviews').select('*'),
     ])
-  cache.profiles = (profiles ?? []) as Profile[]
-  if (settings) cache.settings = settings as any
-  cache.stores = (storesRes.data ?? []) as Store[]
-  cache.reviews = (reviewsRes.data ?? []) as Review[]
-  await refreshOrders()
-  emitChange()
-} catch { /* Supabase not configured */ }
+    let profilesData = (profiles ?? []) as Profile[]
+    if (profilesData.length === 0) {
+      const { data: pData } = await supabase.from('profiles').select('*')
+      profilesData = (pData ?? []) as Profile[]
+    }
+    if (profilesData.length > 0) {
+      cache.profiles = profilesData.map(normalizeProfile)
+    }
+    if (settingsData) cache.settings = settingsData as any
+    if (storesRes.data && storesRes.data.length > 0) {
+      cache.stores = (storesRes.data as Store[]).filter((s) => isUuid(s.id))
+    }
+    if (reviewsRes.data) cache.reviews = reviewsRes.data as Review[]
+    await refreshOrders()
+    emitChange()
+  } catch (e) {
+    console.warn('[ensureAdminData] Failed to load admin extras:', e)
+  }
 }
 
 /* ════════════════════════════════════════════════════════════════
@@ -1144,7 +1571,7 @@ export const reports = {
     const s = await stats.admin()
     const label = { sales: 'Sales & revenue', users: 'Users & sellers', products: 'Products & categories', reviews: 'Reviews' }[kind]
     const summary = {
-      sales: `${s.orders} orders · Rs ${Math.round(s.revenue).toLocaleString()} revenue · Rs ${Math.round(s.commission).toLocaleString()} platform commission (8%).`,
+      sales: `${s.orders} orders · Rs ${Math.round(s.revenue).toLocaleString()} revenue · 0% sales commission (Monthly seller subscription model).`,
       users: `${s.users} users — ${s.buyers} buyers and ${s.sellers} sellers. ${s.pendingStores} store application(s) awaiting approval.`,
       products: `${s.products} products across ${s.categories} categories.`,
       reviews: `${s.reviews} reviews · average rating ${s.avgRating}★.`,
@@ -1179,7 +1606,7 @@ export const stats = {
   admin() {
     const paid = cache.orders.filter((o) => o.payment === 'paid')
     const revenue = paid.reduce((sum, o) => sum + o.total, 0)
-    const commission = paid.reduce((sum, o) => sum + o.commission, 0)
+    const commission = 0 // 0% commission model (PKR 1,200/mo seller subscription replaces sales commission)
     const ratings = cache.reviews.filter((r) => r.is_approved)
     return {
       users: cache.profiles.length, buyers: cache.profiles.filter((p) => p.role === 'buyer').length,
@@ -1200,11 +1627,11 @@ export const stats = {
     const mine = cache.orders.filter((o) => !['cancelled'].includes(o.status) && o.items.some((i) => i.store_id === storeId))
     let gross = 0
     for (const o of mine) for (const i of o.items) if (i.store_id === storeId && i.status !== 'cancelled') gross += i.price * i.qty
-    const commission = gross * 0.08
+    const commission = 0 // 0% sales commission (sellers keep 100% of product price)
     const prods = cache.products.filter((p) => p.store_id === storeId)
     const reviewsForStore = cache.reviews.filter((r) => prods.some((p) => p.id === r.product_id))
     return {
-      store, orders: mine.length, gross, commission, earnings: gross - commission,
+      store, orders: mine.length, gross, commission, earnings: gross,
       products: prods.length, active: prods.filter((p) => p.status === 'active').length,
       outOfStock: prods.filter((p) => p.stock === 0).length,
       reviews: reviewsForStore.length,
@@ -1265,5 +1692,119 @@ export const storage = {
       await supabase.from('payment_transactions').update({ proof_url: path, status: 'awaiting_proof', updated_at: new Date().toISOString() }).eq('id', tx.id)
     }
     return path
+  },
+}
+
+/* ════════════════════════════════════════════════════════════════
+   SELLER SUBSCRIPTION & BANK DETAILS
+   ════════════════════════════════════════════════════════════════ */
+
+export const subscriptions = {
+  async get(sellerId: string): Promise<SellerSubscription> {
+    const supabase = getSupabase()
+    try {
+      const { data, error } = await supabase
+        .from('seller_subscriptions')
+        .select('*')
+        .eq('seller_id', sellerId)
+        .maybeSingle()
+      if (data && !error) return data as SellerSubscription
+    } catch { /* fallback */ }
+
+    // Fallback: 3 months free trial from now
+    const now = new Date()
+    const trialEnd = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000)
+    return {
+      id: `sub-${sellerId}`,
+      seller_id: sellerId,
+      plan: 'standard_seller',
+      monthly_fee: 1200,
+      currency: 'PKR',
+      status: 'free_trial',
+      trial_started_at: now.toISOString(),
+      trial_ends_at: trialEnd.toISOString(),
+      current_period_start: now.toISOString(),
+      current_period_end: trialEnd.toISOString(),
+      last_payment_at: null,
+      last_payment_reference: null,
+      notes: 'Initial 3 months free trial (Free registration)',
+      created_at: now.toISOString(),
+    }
+  },
+
+  async recordPayment(sellerId: string, input: { amount?: number; reference?: string; notes?: string; status?: SellerSubscription['status'] }) {
+    const supabase = getSupabase()
+    const now = new Date()
+    const nextMonth = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
+    const payload = {
+      seller_id: sellerId,
+      plan: 'standard_seller',
+      monthly_fee: input.amount ?? 1200,
+      currency: 'PKR',
+      status: input.status ?? 'active',
+      current_period_start: now.toISOString(),
+      current_period_end: nextMonth.toISOString(),
+      last_payment_at: now.toISOString(),
+      last_payment_reference: input.reference ?? null,
+      notes: input.notes ?? 'Manual subscription payment verified by admin',
+      updated_at: now.toISOString(),
+    }
+    const { data, error } = await supabase
+      .from('seller_subscriptions')
+      .upsert(payload, { onConflict: 'seller_id' })
+      .select('*')
+      .single()
+    if (error) throw new Error(error.message)
+    emitChange()
+    return data as SellerSubscription
+  },
+
+  async listAll(): Promise<SellerSubscription[]> {
+    const supabase = getSupabase()
+    try {
+      const { data, error } = await supabase.from('seller_subscriptions').select('*').order('created_at', { ascending: false })
+      if (error) return []
+      return (data ?? []) as SellerSubscription[]
+    } catch {
+      return []
+    }
+  },
+}
+
+export const bankDetails = {
+  async get(sellerId: string): Promise<SellerBankDetails | null> {
+    const supabase = getSupabase()
+    try {
+      const { data, error } = await supabase
+        .from('seller_bank_details')
+        .select('*')
+        .eq('seller_id', sellerId)
+        .maybeSingle()
+      if (error || !data) return null
+      return data as SellerBankDetails
+    } catch {
+      return null
+    }
+  },
+
+  async save(sellerId: string, details: { bank_name: string; account_title: string; account_number: string; iban?: string; payment_instructions?: string }): Promise<SellerBankDetails> {
+    const supabase = getSupabase()
+    const payload = {
+      seller_id: sellerId,
+      bank_name: details.bank_name.trim(),
+      account_title: details.account_title.trim(),
+      account_number: details.account_number.trim(),
+      iban: details.iban?.trim() || null,
+      payment_instructions: details.payment_instructions?.trim() || null,
+      updated_at: new Date().toISOString(),
+    }
+    const { data, error } = await supabase
+      .from('seller_bank_details')
+      .upsert(payload, { onConflict: 'seller_id' })
+      .select('*')
+      .single()
+    if (error) throw new Error(error.message)
+    emitChange()
+    return data as SellerBankDetails
   },
 }

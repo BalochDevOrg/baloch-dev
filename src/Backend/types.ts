@@ -13,6 +13,13 @@ export interface Profile {
   phone?: string
   bio?: string
   location?: string
+  city?: string
+  country?: string
+  store_name?: string
+  store_description?: string
+  store_logo?: string
+  what_they_sell?: string
+  seller_status?: string
   is_blocked: boolean
   created_at: string
 }
@@ -40,7 +47,11 @@ export interface Store {
   location: string
   rating: number
   total_sales: number
+  status?: 'pending' | 'approved' | 'rejected' | 'suspended'
   is_approved: boolean
+  reviewed_by?: string
+  reviewed_at?: string
+  rejection_reason?: string
   blocked?: boolean
   deleted_at?: string | null
   whatsapp_number?: string
@@ -60,6 +71,7 @@ export interface Product {
   price: number
   currency: 'PKR' | 'USD'
   image: string
+  images?: string[]
   category_slug: string
   stock: number
   condition: ProductCondition
@@ -72,6 +84,35 @@ export interface Product {
   status: ProductStatus
   sold: number
   created_at: string
+}
+
+export interface SellerSubscription {
+  id: string
+  seller_id: string
+  plan: string
+  monthly_fee: number
+  currency: string
+  status: 'free_trial' | 'active' | 'past_due' | 'grace_period' | 'cancelled' | 'expired'
+  trial_started_at: string
+  trial_ends_at: string
+  current_period_start: string
+  current_period_end: string
+  last_payment_at?: string | null
+  last_payment_reference?: string | null
+  notes?: string | null
+  created_at: string
+}
+
+export interface SellerBankDetails {
+  id: string
+  seller_id: string
+  bank_name: string
+  account_title: string
+  account_number: string
+  iban?: string
+  payment_instructions?: string
+  created_at: string
+  updated_at: string
 }
 
 export interface CartItem { id: string; user_id: string; product_id: string; qty: number; added_at: string }
@@ -109,15 +150,15 @@ export type OrderStatus =
   | 'shipped'
   | 'out_for_delivery'
   | 'delivered'
-export type PaymentStatus = 'paid' | 'pending' | 'refunded'
-export type PaymentMethod = 'easypaisa' | 'jazzcash' | 'sadapay' | 'bank_transfer' | 'cod'
+export type PaymentStatus = 'paid' | 'pending' | 'submitted' | 'verified' | 'rejected' | 'refunded'
+export type PaymentMethod = 'nayapay' | 'sadapay' | 'easypaisa' | 'cod' | 'bank_transfer' | 'jazzcash'
 
-export const PAYMENT_METHODS: Array<{ id: PaymentMethod; label: string; sub: string }> = [
-  { id: 'easypaisa', label: 'Easypaisa', sub: 'Mobile wallet — confirmed after provider callback' },
-  { id: 'jazzcash', label: 'JazzCash', sub: 'Mobile wallet — confirmed after provider callback' },
-  { id: 'sadapay', label: 'SadaPay', sub: 'Wallet — confirmed after provider callback' },
-  { id: 'bank_transfer', label: 'Bank Transfer', sub: 'Upload proof — stays pending until verified' },
-  { id: 'cod', label: 'Cash on Delivery', sub: 'Pay the courier — not marked paid until delivery' },
+export const PAYMENT_METHODS: Array<{ id: PaymentMethod; label: string; sub: string; account?: string }> = [
+  { id: 'nayapay', label: 'NayaPay', sub: 'Account: 03332826358 · Title: Baloch Export Hub', account: '03332826358' },
+  { id: 'sadapay', label: 'SadaPay', sub: 'Account: 03332826358 · Title: Baloch Export Hub', account: '03332826358' },
+  { id: 'easypaisa', label: 'Easypaisa', sub: 'Account: 03332826358 · Title: Baloch Export Hub', account: '03332826358' },
+  { id: 'cod', label: 'Cash on Delivery', sub: 'Pay with cash upon package arrival' },
+  { id: 'bank_transfer', label: 'Seller Bank Transfer', sub: 'Direct transfer to seller bank account' },
 ]
 
 export interface OrderStatusHistory {
@@ -268,9 +309,9 @@ export const BUYER_TRACK_STAGES: Array<{
   done: string
   waiting: string
 }> = [
-  { status: 'submitted', label: 'Submitted Order', done: 'Order successfully submitted', waiting: 'Waiting for submission' },
-  { status: 'packaging', label: 'Ready to Packing', done: 'Seller is preparing your order', waiting: 'Waiting for the seller' },
-  { status: 'packed', label: 'Packed Your Order', done: 'Your order has been packed', waiting: 'Waiting to be packed' },
-  { status: 'on_way', label: 'On Way', done: 'Your order is on the way', waiting: 'Waiting for dispatch' },
-  { status: 'reached_to_buyer', label: 'Reached to Buyer', done: 'Your order has reached the buyer', waiting: 'Waiting for delivery' },
+  { status: 'submitted', label: 'Order Submitted', done: 'Order successfully submitted', waiting: 'Waiting for submission' },
+  { status: 'packaging', label: 'Ready for Packing', done: 'Seller is preparing your order', waiting: 'Waiting for the seller' },
+  { status: 'packed', label: 'Order Packed', done: 'Your order has been packed', waiting: 'Waiting to be packed' },
+  { status: 'on_way', label: 'On the Way', done: 'Your order is on the way', waiting: 'Waiting for dispatch' },
+  { status: 'reached_to_buyer', label: 'Delivered to Buyer', done: 'Your order has been delivered', waiting: 'Waiting for delivery' },
 ]

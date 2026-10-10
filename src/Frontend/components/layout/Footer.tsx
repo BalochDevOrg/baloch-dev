@@ -52,7 +52,7 @@ const COLS: Array<{ title: string; links: Array<{ to?: string; href?: string; la
 
 export default function Footer() {
   return (
-    <footer className="relative overflow-hidden border-t border-line bg-bg-soft">
+    <footer id="contact" className="relative overflow-hidden border-t border-line bg-bg-soft">
       <div
         className="pointer-events-none absolute inset-0 opacity-[0.08]"
         style={{ backgroundImage: 'url(/images/pattern-bg.jpg)', backgroundSize: '480px' }}

@@ -32,12 +32,16 @@ export function StorePage() {
   const storeReviews = reviewsApi.listAll().filter((r) => r.is_approved && products.list({ storeId: store.id }).some((p) => p.id === r.product_id))
   const isOwn = user?.id === store.seller_id
 
-  const sendAsk = () => {
+  const sendAsk = async () => {
     if (!user) return navigate('/login', { state: { from: `/store/${store.slug}` } })
     if (!ask.trim()) return
-    messaging.start({ buyerId: user.id, sellerId: store.seller_id, storeId: store.id, body: ask.trim() })
-    setAskOpen(false)
-    navigate('/dashboard/messages')
+    try {
+      await messaging.start({ buyerId: user.id, sellerId: store.seller_id, storeId: store.id, body: ask.trim() })
+      setAskOpen(false)
+      navigate('/dashboard/messages')
+    } catch (err: any) {
+      alert(err?.message || 'Could not send message to store.')
+    }
   }
 
   return (
