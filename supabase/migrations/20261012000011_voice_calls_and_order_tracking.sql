@@ -27,11 +27,11 @@ $$;
 
 -- 1. Add tracking_token to orders
 ALTER TABLE public.orders 
-  ADD COLUMN IF NOT EXISTS tracking_token text DEFAULT encode(gen_random_bytes(16), 'hex');
+  ADD COLUMN IF NOT EXISTS tracking_token text DEFAULT replace(gen_random_uuid()::text, '-', '');
 
 -- Backfill any existing orders that don't have tracking_token
 UPDATE public.orders 
-SET tracking_token = encode(gen_random_bytes(16), 'hex') 
+SET tracking_token = replace(gen_random_uuid()::text, '-', '') 
 WHERE tracking_token IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_orders_tracking_token ON public.orders(tracking_token);
@@ -215,7 +215,7 @@ CREATE OR REPLACE FUNCTION public.place_order(
 RETURNS public.orders
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, extensions
 AS $$
 DECLARE
   v_buyer uuid := auth.uid();
@@ -260,7 +260,7 @@ BEGIN
 
   v_total := v_subtotal + v_shipping;
   v_code := 'BEH-' || to_char(now(), 'YYYY') || '-' || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 6));
-  v_tracking_token := encode(gen_random_bytes(16), 'hex');
+  v_tracking_token := replace(gen_random_uuid()::text, '-', '');
 
   -- Insert Order with ZERO platform commission and unique tracking token
   INSERT INTO public.orders (
