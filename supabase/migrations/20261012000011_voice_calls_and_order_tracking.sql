@@ -3,6 +3,28 @@
 -- Migration: 20261012000011_voice_calls_and_order_tracking.sql
 -- ============================================================================
 
+-- 0. Ensure notification_outbox status constraint supports all valid pipeline states
+ALTER TABLE public.notification_outbox 
+  DROP CONSTRAINT IF EXISTS notification_outbox_status_check;
+
+ALTER TABLE public.notification_outbox 
+  ADD CONSTRAINT notification_outbox_status_check 
+  CHECK (status IN ('pending', 'queued', 'processing', 'processed', 'sent', 'failed', 'skipped_no_provider'));
+
+ALTER TABLE public.notification_outbox 
+  ALTER COLUMN status SET DEFAULT 'pending';
+
+-- Safety check: Ensure legacy trigger does not duplicate or fail outbox
+CREATE OR REPLACE FUNCTION public.on_order_created_notification()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  RETURN NEW;
+END;
+$$;
+
 -- 1. Add tracking_token to orders
 ALTER TABLE public.orders 
   ADD COLUMN IF NOT EXISTS tracking_token text DEFAULT encode(gen_random_bytes(16), 'hex');
@@ -323,62 +345,70 @@ BEGIN
   LIMIT 1;
 
   -- 1) Insert Automatic Buyer Gmail Order Confirmation into notification_outbox
-  INSERT INTO public.notification_outbox (kind, payload, status)
-  VALUES (
-    'order_buyer_confirmation',
-    jsonb_build_object(
-      'order_id', v_order.id,
-      'order_code', v_code,
-      'buyer_id', v_buyer,
-      'buyer_email', coalesce(v_order.email, v_buyer_profile.email),
-      'buyer_name', coalesce(v_order.full_name, v_buyer_profile.full_name),
-      'total', v_total,
-      'subtotal', v_subtotal,
-      'shipping', v_shipping,
-      'payment_method', v_method,
-      'status', 'submitted',
-      'tracking_token', v_tracking_token,
-      'store_name', COALESCE(v_first_store.store_name, 'Baloch Export Hub Artisan Store'),
-      'store_slug', COALESCE(v_first_store.store_slug, 'sellers'),
-      'address', jsonb_build_object(
-        'full_name', v_order.full_name,
-        'city', COALESCE(v_order.address->>'city', 'Quetta'),
-        'state', COALESCE(v_order.address->>'state', 'Balochistan'),
-        'country', COALESCE(v_order.address->>'country', 'Pakistan')
+  BEGIN
+    INSERT INTO public.notification_outbox (kind, payload, status)
+    VALUES (
+      'order_buyer_confirmation',
+      jsonb_build_object(
+        'order_id', v_order.id,
+        'order_code', v_code,
+        'buyer_id', v_buyer,
+        'buyer_email', coalesce(v_order.email, v_buyer_profile.email),
+        'buyer_name', coalesce(v_order.full_name, v_buyer_profile.full_name),
+        'total', v_total,
+        'subtotal', v_subtotal,
+        'shipping', v_shipping,
+        'payment_method', v_method,
+        'status', 'submitted',
+        'tracking_token', v_tracking_token,
+        'store_name', COALESCE(v_first_store.store_name, 'Baloch Export Hub Artisan Store'),
+        'store_slug', COALESCE(v_first_store.store_slug, 'sellers'),
+        'address', jsonb_build_object(
+          'full_name', v_order.full_name,
+          'city', COALESCE(v_order.address->>'city', 'Quetta'),
+          'state', COALESCE(v_order.address->>'state', 'Balochistan'),
+          'country', COALESCE(v_order.address->>'country', 'Pakistan')
+        ),
+        'items', (
+          SELECT jsonb_agg(jsonb_build_object(
+            'name', oi.product_name,
+            'qty', oi.quantity,
+            'price', oi.price,
+            'total', oi.price * oi.quantity,
+            'image', p.image,
+            'tracking_code', oi.tracking_code,
+            'store_name', COALESCE(ss.name, 'Artisan Studio'),
+            'store_slug', COALESCE(ss.slug, '')
+          ))
+          FROM public.order_items oi
+          LEFT JOIN public.products p ON p.id = oi.product_id
+          LEFT JOIN public.seller_stores ss ON ss.id = oi.store_id
+          WHERE oi.order_id = v_order.id
+        )
       ),
-      'items', (
-        SELECT jsonb_agg(jsonb_build_object(
-          'name', oi.product_name,
-          'qty', oi.quantity,
-          'price', oi.price,
-          'total', oi.price * oi.quantity,
-          'image', p.image,
-          'tracking_code', oi.tracking_code,
-          'store_name', COALESCE(ss.name, 'Artisan Studio'),
-          'store_slug', COALESCE(ss.slug, '')
-        ))
-        FROM public.order_items oi
-        LEFT JOIN public.products p ON p.id = oi.product_id
-        LEFT JOIN public.seller_stores ss ON ss.id = oi.store_id
-        WHERE oi.order_id = v_order.id
-      )
-    ),
-    'queued'
-  );
+      'pending'
+    );
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'Failed to queue order_buyer_confirmation outbox: %', SQLERRM;
+  END;
 
   -- 2) Notify Admin in outbox
-  INSERT INTO public.notification_outbox (kind, payload, status)
-  VALUES (
-    'new_order',
-    jsonb_build_object(
-      'order_id', v_order.id,
-      'code', v_code,
-      'total', v_total,
-      'buyer_name', v_order.full_name,
-      'buyer_email', v_order.email
-    ),
-    'queued'
-  );
+  BEGIN
+    INSERT INTO public.notification_outbox (kind, payload, status)
+    VALUES (
+      'new_order',
+      jsonb_build_object(
+        'order_id', v_order.id,
+        'code', v_code,
+        'total', v_total,
+        'buyer_name', v_order.full_name,
+        'buyer_email', v_order.email
+      ),
+      'pending'
+    );
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'Failed to queue new_order outbox: %', SQLERRM;
+  END;
 
   RETURN v_order;
 END;
