@@ -228,24 +228,32 @@ img, video {
 .btn-outline-gold:hover { background: color-mix(in oklab, var(--gold) 12%, transparent); }
 
 /* ── Inputs ──────────────────────────────────────────────────────── */
-.field {
-  width: 100%; border-radius: 0.85rem;
-  background: var(--surface); color: var(--fg);
-  border: 1px solid var(--line);
-  padding: 0.72rem 1rem;
-  font-size: 1rem;
-  max-width: 100%;
-  min-width: 0;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-@media (min-width: 640px) {
-  .field { font-size: 0.925rem; }
-}
-.field::placeholder { color: var(--faint); }
-.field:focus {
-  outline: none;
-  border-color: var(--brand);
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--brand) 22%, transparent);
+@layer components {
+  .field {
+    width: 100%; border-radius: 0.85rem;
+    background: var(--surface); color: var(--fg);
+    border: 1px solid var(--line);
+    padding: 0.72rem 1rem;
+    font-size: 1rem;
+    max-width: 100%;
+    min-width: 0;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  @media (min-width: 640px) {
+    .field { font-size: 0.925rem; }
+  }
+  .field::placeholder { color: var(--faint); }
+  .field:focus {
+    outline: none;
+    border-color: var(--brand);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--brand) 22%, transparent);
+  }
+  .field-icon-pl {
+    padding-left: 2.65rem !important;
+  }
+  .field-icon-pr {
+    padding-right: 2.65rem !important;
+  }
 }
 
 /* ── Keyframe library ────────────────────────────────────────────── */

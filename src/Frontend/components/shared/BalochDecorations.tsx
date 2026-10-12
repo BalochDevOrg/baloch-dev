@@ -89,15 +89,15 @@ export function BalochLogo({
         <div className="flex flex-col justify-center leading-none">
           <span
             className={cn(
-              "font-display text-[0.88rem] sm:text-[0.96rem] font-bold tracking-tight leading-tight whitespace-nowrap",
+              "font-display text-[0.82rem] sm:text-[0.96rem] font-bold tracking-tight leading-tight whitespace-nowrap",
               lightText ? "text-white" : "text-fg"
             )}
           >
-            Baloch <span className="text-terracotta">Export Hub</span>
+            Baloch <span className="hidden min-[440px]:inline text-terracotta">Export </span><span className="text-terracotta">Hub</span>
           </span>
           <span
             className={cn(
-              "mt-0.5 text-[0.45rem] sm:text-[0.48rem] font-semibold uppercase tracking-[0.16em] whitespace-nowrap",
+              "mt-0.5 text-[0.42rem] sm:text-[0.48rem] font-semibold uppercase tracking-[0.16em] whitespace-nowrap hidden sm:inline-block",
               lightText ? "text-amber-200/80" : "text-muted"
             )}
           >

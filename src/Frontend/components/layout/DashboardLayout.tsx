@@ -96,10 +96,14 @@ export function DashboardLayout({
             to={homeTo}
             className="group flex items-center gap-3 rounded-2xl border border-line bg-surface/80 p-3 transition hover:border-brand/40 hover:bg-surface shadow-xs"
           >
-            {/* Deep green avatar circle with white bold initials */}
-            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-brand text-onbrand font-bold text-xs tracking-wider">
-              {userInitials}
-            </div>
+            {/* Deep green avatar circle with white bold initials or uploaded profile photo */}
+            {user.avatar_url ? (
+              <img src={user.avatar_url} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover border border-line" />
+            ) : (
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-brand text-onbrand font-bold text-xs tracking-wider">
+                {userInitials}
+              </div>
+            )}
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-bold text-fg">{user.full_name}</p>
               <p className="text-[0.66rem] font-semibold uppercase tracking-wider text-faint">
@@ -177,11 +181,11 @@ export function DashboardLayout({
       {/* ── Main Content Column ── */}
       <div className="lg:pl-[268px]">
         {/* Top Header */}
-        <header className="sticky top-0 z-[80] flex h-16 items-center gap-2 border-b border-line bg-bg/95 px-4 backdrop-blur-md sm:gap-3 sm:px-8">
+        <header className="sticky top-0 z-[80] flex h-16 items-center gap-1.5 sm:gap-3 border-b border-line bg-bg/95 px-3 sm:px-8 backdrop-blur-md">
 
           {/* Left mobile menu toggle */}
           <button
-            className="relative z-10 shrink-0 rounded-lg p-2 text-muted hover:bg-surface-2 lg:hidden"
+            className="relative z-10 shrink-0 rounded-lg p-1.5 sm:p-2 text-muted hover:bg-surface-2 lg:hidden"
             onClick={() => setOpen(true)}
             aria-label="Open menu"
           >
@@ -190,24 +194,24 @@ export function DashboardLayout({
 
           {/* Optional page title for small screens */}
           <div className="relative z-10 min-w-0 flex-1">
-            <h1 className="truncate font-display text-base font-bold text-fg sm:text-lg">
+            <h1 className="truncate font-display text-sm sm:text-lg font-bold text-fg">
               {current?.label ?? title}
             </h1>
           </div>
 
           {/* Right Controls: Search, Theme Dropdown, Bell, User Profile Badge */}
-          <div className="relative z-10 ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2.5">
+          <div className="relative z-10 ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
             {/* Search circular button */}
             <Link
               to="/search"
-              className="grid h-9 w-9 place-items-center rounded-full border border-line bg-surface/85 text-fg transition hover:bg-surface hover:border-brand"
+              className="grid h-8.5 w-8.5 sm:h-9 sm:w-9 place-items-center rounded-full border border-line bg-surface/85 text-fg transition hover:bg-surface hover:border-brand"
               aria-label="Search"
             >
-              <Search size={15} />
+              <Search size={14} />
             </Link>
 
             {/* Compact, clearly labeled Theme Dropdown */}
-            <ThemeSwitcher />
+            <ThemeSwitcher className="hidden sm:inline-flex" />
 
             {/* Notification Bell */}
             <NotificationsBell />
@@ -217,13 +221,17 @@ export function DashboardLayout({
               ref={userMenuBtnRef}
               type="button"
               onClick={() => setUserMenuOpen((m) => !m)}
-              className="flex items-center gap-2 rounded-full border border-line bg-surface/85 p-1 pr-3 transition hover:bg-surface hover:border-brand shadow-2xs"
+              className="flex items-center gap-1 sm:gap-2 rounded-full border border-line bg-surface/85 p-0.5 sm:p-1 pr-1 sm:pr-3 transition hover:bg-surface hover:border-brand shadow-2xs shrink-0"
               aria-label="User account menu"
               aria-expanded={userMenuOpen}
             >
-              <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand text-onbrand font-bold text-[0.68rem] tracking-wider">
-                {userInitials}
-              </div>
+              {user.avatar_url ? (
+                <img src={user.avatar_url} alt="" className="h-7 w-7 shrink-0 rounded-full object-cover border border-line" />
+              ) : (
+                <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand text-onbrand font-bold text-[0.68rem] tracking-wider">
+                  {userInitials}
+                </div>
+              )}
               <div className="hidden sm:flex flex-col text-left leading-none">
                 <span className="truncate text-xs font-bold text-fg max-w-[120px]">
                   {user.full_name}

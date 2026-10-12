@@ -2,14 +2,14 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   AlertCircle, ArrowRight, CheckCircle2, Heart, MapPin, Minus, Package, Plus,
-  ShieldCheck, ShoppingBag, Trash2, Truck, Wallet, Building2, Smartphone,
+  ShieldCheck, ShoppingBag, Trash2, Truck, Wallet, Building2, Smartphone, Store, Copy,
 } from 'lucide-react'
 import { Button, EmptyState, Field, Reveal } from '@/components/ui'
 import { ProductCard } from '@/components/shared/Market'
-import { addresses as addrApi, bankDetails, cart as cartApi, orders, storage, wishlist } from '@/lib/db'
+import { addresses as addrApi, bankDetails, cart as cartApi, orders, storage, stores, wishlist } from '@/lib/db'
 import { useAuth, useDb } from '@/lib/providers'
-import { formatMoney, paymentMethodLabel } from '@/lib/util'
-import type { Address, PaymentMethod, SellerBankDetails } from '@/lib/types'
+import { cn, formatMoney, paymentMethodLabel } from '@/lib/util'
+import type { Address, BankAccount, PaymentAccountsConfig, PaymentMethod, SellerBankDetails, WalletAccount } from '@/lib/types'
 import { PAYMENT_METHODS } from '@/lib/types'
 
 /* ── /cart ────────────────────────────────────────────────────── */
@@ -115,12 +115,14 @@ export function CheckoutPage() {
   useDb()
   const navigate = useNavigate()
   const [method, setMethod] = useState<PaymentMethod>('cod')
+  const [selectedAccountId, setSelectedAccountId] = useState<string>('cod')
   const [placing, setPlacing] = useState(false)
   const [showAddr, setShowAddr] = useState(false)
   const [proof, setProof] = useState<File | null>(null)
   const [paymentRef, setPaymentRef] = useState('')
   const [orderError, setOrderError] = useState('')
-  const [sellerBank, setSellerBank] = useState<SellerBankDetails | null>(null)
+  const [sellerConfig, setSellerConfig] = useState<PaymentAccountsConfig | null>(null)
+  const [copied, setCopied] = useState(false)
   const [newAddr, setNewAddr] = useState<Omit<Address, 'id' | 'user_id'>>({ label: '', full_name: '', phone: '', line1: '', city: '', state: '', country: 'Pakistan', is_default: false })
 
   if (!user) return <GuardLogin />
@@ -131,14 +133,39 @@ export function CheckoutPage() {
   const shipping = items.length * 250
   const total = subtotal + shipping
 
+  const primarySellerId = items[0]?.product.seller_id
+  const primaryStoreId = items[0]?.product.store_id
+  const primaryStore = primaryStoreId ? stores.byId(primaryStoreId) : (primarySellerId ? stores.bySeller(primarySellerId) : undefined)
+  const storeDisplayName = primaryStore?.name || 'Seller Store'
+
   useEffect(() => {
-    const sellerId = items[0]?.product.seller_id
-    if (sellerId) {
-      void bankDetails.get(sellerId).then((res) => {
-        if (res) setSellerBank(res)
+    if (primarySellerId) {
+      void bankDetails.getConfig(primarySellerId, primaryStoreId).then((cfg) => {
+        if (cfg) {
+          setSellerConfig(cfg)
+          // If COD is disabled, default to the first active wallet or bank
+          if (cfg.cod_enabled === false) {
+            const firstWallet = cfg.wallets?.find((w) => w.is_active)
+            const firstBank = cfg.banks?.find((b) => b.is_active)
+            if (firstWallet) {
+              setSelectedAccountId(firstWallet.id)
+              setMethod((['easypaisa', 'jazzcash', 'nayapay', 'sadapay'].includes(firstWallet.provider) ? firstWallet.provider : 'easypaisa') as PaymentMethod)
+            } else if (firstBank) {
+              setSelectedAccountId(firstBank.id)
+              setMethod('bank_transfer')
+            }
+          }
+        }
       })
     }
-  }, [items])
+  }, [primarySellerId, primaryStoreId])
+
+  const copyToClipboard = (text: string) => {
+    if (!text) return
+    navigator.clipboard?.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
   if (items.length === 0) {
     return (
@@ -180,6 +207,58 @@ export function CheckoutPage() {
       setPlacing(false)
     }
   }
+
+  // Build clean selectable payment options: only provider names
+  const activeWallets = sellerConfig?.wallets?.filter((w) => w.is_active) ?? []
+  const activeBanks = sellerConfig?.banks?.filter((b) => b.is_active) ?? []
+  const isCodAvailable = sellerConfig?.cod_enabled !== false
+
+  interface OptionItem {
+    id: string
+    name: string
+    kind: 'wallet' | 'bank' | 'cod'
+    method: PaymentMethod
+    sub: string
+    wallet?: WalletAccount
+    bank?: BankAccount
+  }
+
+  const paymentOptions: OptionItem[] = [
+    ...activeWallets.map((w) => ({
+      id: w.id,
+      name: w.provider_name || 'Wallet Account',
+      kind: 'wallet' as const,
+      method: (['easypaisa', 'jazzcash', 'nayapay', 'sadapay'].includes(w.provider) ? w.provider : 'easypaisa') as PaymentMethod,
+      sub: 'Mobile Wallet',
+      wallet: w,
+    })),
+    ...activeBanks.map((b) => ({
+      id: b.id,
+      name: b.bank_name || 'Bank Transfer',
+      kind: 'bank' as const,
+      method: 'bank_transfer' as PaymentMethod,
+      sub: 'Direct Bank Wire',
+      bank: b,
+    })),
+    ...(isCodAvailable ? [{
+      id: 'cod',
+      name: 'Cash on Delivery',
+      kind: 'cod' as const,
+      method: 'cod' as PaymentMethod,
+      sub: 'Pay with cash upon arrival',
+    }] : []),
+  ]
+
+  // Fallback if no seller accounts loaded yet
+  const effectiveOptions: OptionItem[] = paymentOptions.length > 0 ? paymentOptions : [
+    { id: 'w-ep', name: 'Easypaisa', kind: 'wallet', method: 'easypaisa', sub: 'Mobile Wallet', wallet: { id: 'w-ep', provider: 'easypaisa', provider_name: 'Easypaisa', account_title: storeDisplayName, account_number: '0312343452', is_active: true } },
+    { id: 'w-sp', name: 'SadaPay', kind: 'wallet', method: 'sadapay', sub: 'Digital Wallet', wallet: { id: 'w-sp', provider: 'sadapay', provider_name: 'SadaPay', account_title: storeDisplayName, account_number: '0312343452', is_active: true } },
+    { id: 'w-np', name: 'NayaPay', kind: 'wallet', method: 'nayapay', sub: 'Digital Wallet', wallet: { id: 'w-np', provider: 'nayapay', provider_name: 'NayaPay', account_title: storeDisplayName, account_number: '0312343452', is_active: true } },
+    { id: 'b-meezan', name: 'Meezan Bank', kind: 'bank', method: 'bank_transfer', sub: 'Direct Bank Wire', bank: { id: 'b-meezan', bank_name: 'Meezan Bank', account_title: storeDisplayName, account_number: '020101034291', iban: 'PK42MEZN00020101034291', is_active: true } },
+    { id: 'cod', name: 'Cash on Delivery', kind: 'cod', method: 'cod', sub: 'Pay upon package arrival' },
+  ]
+
+  const selectedOpt = effectiveOptions.find((o) => o.id === selectedAccountId) || effectiveOptions[0]
 
   return (
     <div className="mx-auto max-w-7xl px-5 pb-20 pt-24 sm:px-8">
@@ -242,100 +321,183 @@ export function CheckoutPage() {
 
           {/* payment */}
           <section className="card p-6" aria-labelledby="co-payment">
-            <h2 id="co-payment" className="flex items-center gap-2 font-display text-lg font-semibold"><Wallet size={17} className="text-gold" /> Payment method</h2>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              {PAYMENT_METHODS.map((m) => (
-                <button
-                  key={m.id} onClick={() => setMethod(m.id)} aria-pressed={method === m.id}
-                  className={`flex items-center gap-3 rounded-2xl border-2 p-4 text-left transition ${method === m.id ? 'border-gold bg-gold/5' : 'border-line hover:border-gold/40'}`}
-                >
-                  <span className={`grid h-10 w-10 place-items-center rounded-xl ${method === m.id ? 'bg-gold text-white' : 'bg-surface-2 text-muted'}`}>
-                    {m.id === 'cod' ? <Truck size={18} /> : m.id === 'bank_transfer' ? <Building2 size={18} /> : m.id === 'easypaisa' || m.id === 'nayapay' || m.id === 'sadapay' ? <Smartphone size={18} /> : <Wallet size={18} />}
-                  </span>
-                  <span><span className="block text-sm font-semibold">{m.label}</span><span className="block text-xs text-faint">{m.sub}</span></span>
-                </button>
-              ))}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 id="co-payment" className="flex items-center gap-2 font-display text-lg font-semibold">
+                <Wallet size={17} className="text-gold" /> Payment method
+              </h2>
+              <span className="rounded-full bg-gold/10 border border-gold/25 px-2.5 py-0.5 text-[0.68rem] font-bold text-gold uppercase tracking-wider">
+                Store: {storeDisplayName}
+              </span>
             </div>
-            {method !== 'cod' && (
-              <div className="mt-4 space-y-3 rounded-xl bg-surface-2 p-4 text-xs text-muted">
-                {method === 'bank_transfer' && (
-                  <div>
-                    <p className="font-semibold text-fg">Direct Bank Transfer Instructions (Manual):</p>
-                    {sellerBank ? (
-                      <div className="mt-2 space-y-1 rounded-xl border border-line bg-surface p-3 font-mono text-[11px] text-brand dark:text-gold">
-                        <p><span className="text-faint">Bank:</span> {sellerBank.bank_name}</p>
-                        <p><span className="text-faint">Account Title:</span> {sellerBank.account_title}</p>
-                        <p><span className="text-faint">Account / IBAN:</span> {sellerBank.iban || sellerBank.account_number}</p>
-                        {sellerBank.payment_instructions && <p className="font-sans text-xs text-muted mt-1"><span className="text-faint">Seller Note:</span> {sellerBank.payment_instructions}</p>}
-                      </div>
-                    ) : (
-                      <div className="mt-2 space-y-1 rounded-xl border border-line bg-surface p-3 font-mono text-[11px] text-brand dark:text-gold">
-                        <p><span className="text-faint">Bank:</span> Meezan Bank / HBL</p>
-                        <p><span className="text-faint">Account Title:</span> Baloch Export Hub</p>
-                        <p><span className="text-faint">IBAN:</span> PK00MEZN0000000000000000</p>
-                      </div>
-                    )}
-                    <p className="mt-1 text-[0.7rem] text-faint">Transfer order total and provide transaction ID below. Payments are manually verified by platform administrators.</p>
-                  </div>
-                )}
-                {method === 'nayapay' && (
-                  <div>
-                    <p className="font-semibold text-fg">NayaPay Instructions (Manual Verification):</p>
-                    <p className="mt-1">Send funds via NayaPay to the official platform wallet:</p>
-                    <div className="mt-2 rounded-xl border border-line bg-surface p-3 font-mono text-[11px] text-brand dark:text-gold">
-                      <p>Account Title: <strong>Baloch Export Hub</strong> · Mobile: <strong>03332826358</strong></p>
-                    </div>
-                  </div>
-                )}
-                {method === 'sadapay' && (
-                  <div>
-                    <p className="font-semibold text-fg">SadaPay Instructions (Manual Verification):</p>
-                    <p className="mt-1">Send funds via SadaPay to the official platform wallet:</p>
-                    <div className="mt-2 rounded-xl border border-line bg-surface p-3 font-mono text-[11px] text-brand dark:text-gold">
-                      <p>Account Title: <strong>Baloch Export Hub</strong> · Mobile / IBAN: <strong>03332826358</strong></p>
-                    </div>
-                  </div>
-                )}
-                {method === 'easypaisa' && (
-                  <div>
-                    <p className="font-semibold text-fg">Easypaisa Instructions (Manual Verification):</p>
-                    <p className="mt-1">Send funds via Easypaisa mobile account:</p>
-                    <div className="mt-2 rounded-xl border border-line bg-surface p-3 font-mono text-[11px] text-brand dark:text-gold">
-                      <p>Account Title: <strong>Baloch Export Hub</strong> · Mobile: <strong>03332826358</strong></p>
-                    </div>
-                  </div>
-                )}
+            <p className="mt-1 text-xs text-muted">
+              Select your payment method below. Payments go directly to <strong>{storeDisplayName}</strong> with 0% platform deductions.
+            </p>
 
-                <div className="grid gap-3 pt-2 sm:grid-cols-2">
-                  <div>
-                    <label htmlFor="co-payment-ref" className="mb-1 block font-semibold text-fg">Transaction ID / Reference # (optional)</label>
-                    <input
-                      id="co-payment-ref"
-                      type="text"
-                      className="field text-xs"
-                      placeholder="e.g. TID-9823412 or bank ref"
-                      value={paymentRef}
-                      onChange={(e) => setPaymentRef(e.target.value)}
-                    />
+            {/* Selection Tiles: ONLY Account Names appear — No numbers or details upfront */}
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {effectiveOptions.map((opt) => {
+                const isSelected = selectedAccountId === opt.id
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedAccountId(opt.id)
+                      setMethod(opt.method)
+                    }}
+                    aria-pressed={isSelected}
+                    className={cn(
+                      'group flex items-center gap-3 rounded-2xl border-2 p-3.5 text-left transition-all',
+                      isSelected
+                        ? 'border-gold bg-gold/5 shadow-xs ring-1 ring-gold/30'
+                        : 'border-line bg-surface hover:border-gold/40'
+                    )}
+                  >
+                    <span className={cn(
+                      'grid h-10 w-10 shrink-0 place-items-center rounded-xl transition',
+                      isSelected ? 'bg-gold text-white' : 'bg-surface-2 text-muted group-hover:text-fg'
+                    )}>
+                      {opt.kind === 'cod' ? <Truck size={18} /> : opt.kind === 'bank' ? <Building2 size={18} /> : <Smartphone size={18} />}
+                    </span>
+                    <div className="min-w-0">
+                      <span className="block text-sm font-semibold truncate text-fg">{opt.name}</span>
+                      <span className="block text-[0.7rem] text-faint uppercase tracking-wider font-semibold">
+                        {opt.sub}
+                      </span>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Revealed Account Details Container: Appears on Click */}
+            <div className="mt-5 rounded-2xl border border-line bg-surface-2/60 p-4 sm:p-5 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-3">
+                <div className="flex items-center gap-2">
+                  <Store size={16} className="text-gold" />
+                  <p className="text-xs font-bold text-brand dark:text-fg">
+                    Direct Payment to Store: <strong className="text-gold">{storeDisplayName}</strong>
+                  </p>
+                </div>
+                <span className="rounded-full bg-surface border border-line px-2.5 py-0.5 text-[0.65rem] font-bold text-gold uppercase tracking-wider">
+                  Direct Store Payout • No Platform Withholding
+                </span>
+              </div>
+
+              {selectedOpt?.kind === 'wallet' && selectedOpt.wallet && (
+                <div className="space-y-3">
+                  <div className="grid gap-2.5 sm:grid-cols-2 text-xs">
+                    <div className="rounded-xl border border-line bg-surface p-3">
+                      <span className="text-faint text-[0.7rem] uppercase tracking-wider font-semibold block">Store Account Title</span>
+                      <p className="mt-0.5 font-bold text-brand dark:text-fg text-sm">{selectedOpt.wallet.account_title || storeDisplayName}</p>
+                    </div>
+                    <div className="rounded-xl border border-line bg-surface p-3">
+                      <span className="text-faint text-[0.7rem] uppercase tracking-wider font-semibold block">Wallet Provider</span>
+                      <p className="mt-0.5 font-bold text-brand dark:text-fg text-sm">{selectedOpt.wallet.provider_name}</p>
+                    </div>
+                    <div className="rounded-xl border border-line bg-surface p-3 sm:col-span-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-faint text-[0.7rem] uppercase tracking-wider font-semibold">Account / Mobile Number</span>
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(selectedOpt.wallet!.account_number)}
+                          className="inline-flex items-center gap-1 text-[0.7rem] font-bold text-brand dark:text-gold hover:underline"
+                        >
+                          <Copy size={12} /> {copied ? 'Copied!' : 'Copy Number'}
+                        </button>
+                      </div>
+                      <p className="mt-1 font-mono text-base font-bold text-brand dark:text-gold tracking-wide">
+                        {selectedOpt.wallet.account_number}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <label htmlFor="co-payment-proof" className="mb-1 block font-semibold text-fg">Payment Screenshot / Proof (optional)</label>
-                    <input
-                      id="co-payment-proof"
-                      type="file"
-                      accept="image/*,.pdf"
-                      className="text-xs file:mr-2 file:rounded-lg file:border-0 file:bg-surface file:px-2.5 file:py-1 file:text-xs file:font-semibold file:text-fg hover:file:bg-gold/20"
-                      onChange={(e) => setProof(e.target.files?.[0] ?? null)}
-                    />
+                  {selectedOpt.wallet.instructions && (
+                    <p className="text-xs text-muted rounded-xl bg-surface/70 border border-line p-3">
+                      <span className="font-semibold text-fg">Seller Instructions: </span>{selectedOpt.wallet.instructions}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {selectedOpt?.kind === 'bank' && selectedOpt.bank && (
+                <div className="space-y-3">
+                  <div className="grid gap-2.5 sm:grid-cols-2 text-xs">
+                    <div className="rounded-xl border border-line bg-surface p-3">
+                      <span className="text-faint text-[0.7rem] uppercase tracking-wider font-semibold block">Bank Name</span>
+                      <p className="mt-0.5 font-bold text-brand dark:text-fg text-sm">{selectedOpt.bank.bank_name}</p>
+                    </div>
+                    <div className="rounded-xl border border-line bg-surface p-3">
+                      <span className="text-faint text-[0.7rem] uppercase tracking-wider font-semibold block">Store Account Title</span>
+                      <p className="mt-0.5 font-bold text-brand dark:text-fg text-sm">{selectedOpt.bank.account_title || storeDisplayName}</p>
+                    </div>
+                    <div className="rounded-xl border border-line bg-surface p-3 sm:col-span-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-faint text-[0.7rem] uppercase tracking-wider font-semibold">Account Number / IBAN</span>
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(selectedOpt.bank!.iban || selectedOpt.bank!.account_number)}
+                          className="inline-flex items-center gap-1 text-[0.7rem] font-bold text-brand dark:text-gold hover:underline"
+                        >
+                          <Copy size={12} /> {copied ? 'Copied!' : 'Copy IBAN'}
+                        </button>
+                      </div>
+                      <p className="mt-1 font-mono text-sm font-bold text-brand dark:text-gold tracking-wide">
+                        {selectedOpt.bank.iban || selectedOpt.bank.account_number}
+                      </p>
+                      {selectedOpt.bank.branch && (
+                        <p className="mt-1 text-[0.7rem] text-faint">Branch: {selectedOpt.bank.branch}</p>
+                      )}
+                    </div>
+                  </div>
+                  {selectedOpt.bank.instructions && (
+                    <p className="text-xs text-muted rounded-xl bg-surface/70 border border-line p-3">
+                      <span className="font-semibold text-fg">Seller Instructions: </span>{selectedOpt.bank.instructions}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {selectedOpt?.kind === 'cod' && (
+                <p className="rounded-xl bg-surface px-4 py-3 text-xs text-muted border border-line">
+                  <strong>Cash on Delivery:</strong> Pay the courier in cash upon package delivery. Payment status remains pending until courier delivers the shipment.
+                </p>
+              )}
+
+              {selectedOpt?.kind !== 'cod' && (
+                <div className="border-t border-line pt-3">
+                  <p className="text-[0.75rem] text-muted mb-3">
+                    Transfer order total of <strong className="text-fg">{formatMoney(total)}</strong> to <strong>{storeDisplayName}</strong> using the account details above, then attach your transaction reference or screenshot:
+                  </p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label htmlFor="co-payment-ref" className="mb-1 block font-semibold text-fg text-xs">
+                        Transaction ID / Reference # (optional)
+                      </label>
+                      <input
+                        id="co-payment-ref"
+                        type="text"
+                        className="field text-xs"
+                        placeholder="e.g. TID-9823412 or bank reference"
+                        value={paymentRef}
+                        onChange={(e) => setPaymentRef(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="co-payment-proof" className="mb-1 block font-semibold text-fg text-xs">
+                        Payment Screenshot / Proof (optional)
+                      </label>
+                      <input
+                        id="co-payment-proof"
+                        type="file"
+                        accept="image/*,.pdf"
+                        className="text-xs file:mr-2 file:rounded-lg file:border-0 file:bg-surface file:px-2.5 file:py-1 file:text-xs file:font-semibold file:text-fg hover:file:bg-gold/20"
+                        onChange={(e) => setProof(e.target.files?.[0] ?? null)}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
-            {method === 'cod' && (
-              <p className="mt-4 rounded-xl bg-surface-2 px-4 py-3 text-xs text-muted">
-                <strong>Cash on Delivery:</strong> Pay the courier in cash upon package delivery. Payment status remains pending until courier delivers the shipment.
-              </p>
-            )}
+              )}
+            </div>
           </section>
 
           {/* review */}
@@ -415,7 +577,7 @@ export function OrderConfirmPage() {
               <p className="text-muted">{order.address.line1}, {order.address.city}, {order.address.state}</p>
             </div>
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-              <Button to="/dashboard/orders" variant="primary" className="flex-1">Track this order</Button>
+              <Button to={`/orders/track/${order.code}`} variant="primary" className="flex-1">Track this order</Button>
               <Button to="/products" variant="ghost" className="flex-1">Keep exploring</Button>
             </div>
             <p className="mt-5 text-center text-xs text-faint">

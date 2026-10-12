@@ -8,7 +8,8 @@
  */
 import type {
   Address, CanonicalOrderStatus, Category, Conversation, DBState, Message, Notification, Order,
-  OrderStatus, OrderStatusHistory, Product, Profile, Report, Review, Role, SellerBankDetails, SellerSubscription, Store,
+  OrderStatus, OrderStatusHistory, PaymentAccountsConfig, Product, Profile, Report, Review, Role,
+  SellerBankDetails, SellerSubscription, Store, WalletAccount, BankAccount, PublicOrderTracking,
 } from './types'
 import { getSupabase, isSupabaseConfigured, clearStoredAuthTokens } from './supabase'
 import { isUuid, normalizeOrderStatus, slugify } from './util'
@@ -279,6 +280,11 @@ function subscribeRealtime() {
         if (uid) {
           const { data: convs } = await supabase.from('conversations').select('*').or(`buyer_id.eq.${uid},seller_id.eq.${uid}`)
           cache.conversations = (convs ?? []) as Conversation[]
+          const convIds = (convs ?? []).map((c) => c.id)
+          if (convIds.length > 0) {
+            const { data: msgs } = await supabase.from('messages').select('*').in('conversation_id', convIds).order('created_at', { ascending: true })
+            if (msgs) cache.messages = msgs as Message[]
+          }
         }
         emitChange()
       })
@@ -743,6 +749,18 @@ export const categories = {
     for (const p of cache.products) if (p.status === 'active') out[p.category_slug] = (out[p.category_slug] ?? 0) + 1
     return out
   },
+  async fetch(): Promise<Category[]> {
+    if (cache.categories.length > 0) return cache.categories
+    if (!isSupabaseConfigured) return []
+    const supabase = getSupabase()
+    const { data, error } = await supabase.from('categories').select('*').order('name')
+    if (error) throw error
+    if (data) {
+      cache.categories = data as Category[]
+      emitChange()
+    }
+    return cache.categories
+  },
   async save(cat: Category) {
     const supabase = getSupabase()
     if (cat.id) await supabase.from('categories').upsert({ ...cat, id: cat.id })
@@ -764,8 +782,35 @@ export const categories = {
    ════════════════════════════════════════════════════════════════ */
 
 export const stores = {
-  listApproved: () => cache.stores.filter((s) => s.is_approved && aliveStore(s) && !s.blocked && isUuid(s.id)),
+  listApproved: () => cache.stores.filter((s) => s.is_approved && aliveStore(s) && !s.blocked && !(s as any).is_blocked && isUuid(s.id)),
   listAll: () => cache.stores.filter((s) => isUuid(s.id)),
+  listByCategory(categorySlug?: string): Store[] {
+    const approved = stores.listApproved()
+    if (!categorySlug || categorySlug === 'all') return approved
+    const target = categorySlug.trim().toLowerCase()
+    const catObj = cache.categories.find((c) => c.slug.toLowerCase() === target || c.id === categorySlug)
+    const targetSlug = catObj ? catObj.slug.toLowerCase() : target
+    const targetId = catObj ? catObj.id : ''
+
+    return approved.filter((s) => {
+      // 1. Direct store category match
+      const hasStoreCat = Array.isArray(s.category_slugs) && s.category_slugs.some((cs) => {
+        const lower = (cs || '').trim().toLowerCase()
+        return lower === targetSlug || lower === target || (targetId && lower === targetId)
+      })
+      if (hasStoreCat) return true
+
+      // 2. Product-level category match: if any active product in this store belongs to category
+      const hasProductCat = cache.products.some((p) => {
+        if (p.status !== 'active') return false
+        const matchesStore = p.store_id === s.id || (p.seller_id && s.seller_id && p.seller_id === s.seller_id)
+        if (!matchesStore) return false
+        const prodCat = (p.category_slug || '').trim().toLowerCase()
+        return prodCat === targetSlug || prodCat === target || (targetId && prodCat === targetId)
+      })
+      return hasProductCat
+    })
+  },
   listBySeller: (sellerId: string) => cache.stores.filter((s) => s.seller_id === sellerId && aliveStore(s) && isUuid(s.id)),
   bySlug: (slug: string) => cache.stores.find((s) => s.slug === slug && aliveStore(s) && isUuid(s.id)),
   byId: (id: string) => cache.stores.find((s) => s.id === id && isUuid(s.id)),
@@ -1214,6 +1259,78 @@ export const orders = {
     return cache.orderHistory.filter((h) => h.order_id === orderId).sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at))
   },
 
+  async getTracking(identifier: string, token?: string): Promise<PublicOrderTracking | null> {
+    const supabase = getSupabase()
+    try {
+      const { data, error } = await supabase.rpc('get_public_order_tracking', {
+        p_identifier: identifier,
+        p_token: token || null,
+      })
+      if (!error && data && !data.error) {
+        return data as PublicOrderTracking
+      }
+    } catch (err) {
+      console.warn('[orders] get_public_order_tracking rpc error, attempting fallback:', err)
+    }
+
+    // Fallback to cache lookup if available
+    const cached = cache.orders.find((o) => o.id === identifier || o.code === identifier)
+    if (cached) {
+      return {
+        id: cached.id,
+        code: cached.code,
+        status: cached.status,
+        total: cached.total,
+        subtotal: cached.subtotal,
+        shipping: cached.shipping,
+        payment_method: cached.payment_method,
+        payment: cached.payment,
+        created_at: cached.created_at,
+        recipient_name: cached.address.full_name,
+        is_authorized_viewer: true,
+        items: cached.items.map((i) => {
+          const s = cache.stores.find((st) => st.id === i.store_id)
+          return {
+            id: i.id,
+            product_id: i.product_id,
+            product_name: i.name,
+            price: i.price,
+            quantity: i.qty,
+            status: i.status,
+            tracking_code: i.tracking_code,
+            courier: i.courier,
+            estimated_delivery: i.estimated_delivery,
+            image: i.image,
+            store_id: i.store_id,
+            store_name: s?.name,
+            store_slug: s?.slug,
+          }
+        }),
+        history: orders.history(cached.id).map((h) => ({
+          id: h.id,
+          from_status: h.from_status,
+          to_status: String(h.to_status),
+          note: h.note,
+          created_at: h.created_at,
+        })),
+        destination: {
+          city: cached.address.city,
+          state: cached.address.state,
+          country: cached.address.country,
+        },
+        address_summary: {
+          full_name: cached.address.full_name,
+          line1: cached.address.line1,
+          city: cached.address.city,
+          state: cached.address.state,
+          country: cached.address.country,
+        },
+      }
+    }
+
+    return null
+  },
+
   async cancel(orderId: string) {
     const supabase = getSupabase()
     const { error } = await supabase.rpc('cancel_order', { p_order_id: orderId })
@@ -1364,9 +1481,14 @@ export const messaging = {
     return messaging.byId(convId!) || cache.conversations.find((c) => c.id === convId)!
   },
 
-  async send(conversationId: string, senderId: string, body: string): Promise<Message> {
+  async send(
+    conversationId: string,
+    senderId: string,
+    body: string,
+    opts?: { voiceUrl?: string; voiceDuration?: number },
+  ): Promise<Message> {
     const trimmed = body.trim()
-    if (!trimmed) throw new Error('Message cannot be empty.')
+    if (!trimmed && !opts?.voiceUrl) throw new Error('Message cannot be empty.')
     const supabase = getSupabase()
 
     let conv = cache.conversations.find((x) => x.id === conversationId)
@@ -1379,13 +1501,26 @@ export const messaging = {
     }
     const receiverId = conv ? (conv.buyer_id === senderId ? conv.seller_id : conv.buyer_id) : undefined
 
-    const { data: msg, error } = await supabase.from('messages').insert({
+    const formattedDuration = opts?.voiceDuration != null
+      ? `${Math.floor(opts.voiceDuration / 60)}:${Math.floor(opts.voiceDuration % 60).toString().padStart(2, '0')}`
+      : '0:00'
+    const fallbackText = trimmed || (opts?.voiceUrl ? `🎤 Voice message (${formattedDuration})` : '')
+
+    const payload: any = {
       conversation_id: conversationId,
       sender_id: senderId,
       receiver_id: receiverId,
-      body: trimmed,
-      content: trimmed,
-    }).select('*').single()
+      body: fallbackText,
+      content: fallbackText,
+    }
+    if (opts?.voiceUrl) {
+      payload.voice_url = opts.voiceUrl
+    }
+    if (opts?.voiceDuration !== undefined) {
+      payload.voice_duration = Math.round(opts.voiceDuration)
+    }
+
+    const { data: msg, error } = await supabase.from('messages').insert(payload).select('*').single()
 
     if (error || !msg) {
       console.error('[messaging.send] error:', error)
@@ -1693,6 +1828,115 @@ export const storage = {
     }
     return path
   },
+  async uploadStoreBanner(file: File, sellerId: string): Promise<string> {
+    if (!PRODUCT_IMAGE_TYPES.has(file.type)) {
+      throw new Error('Please use a JPG, PNG or WEBP image.')
+    }
+    if (file.size > PRODUCT_IMAGE_MAX_BYTES) {
+      throw new Error('Banner image must be 5 MB or smaller.')
+    }
+    try {
+      const supabase = getSupabase()
+      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace('jpeg', 'jpg')
+      const path = `${sellerId}/banner-${Date.now()}.${ext}`
+      const { error } = await supabase.storage.from('store-branding').upload(path, file, {
+        contentType: file.type,
+        upsert: true,
+      })
+      if (!error) {
+        const { data } = supabase.storage.from('store-branding').getPublicUrl(path)
+        if (data?.publicUrl) return data.publicUrl
+      }
+    } catch {
+      // Fallback to data URL below
+    }
+    return fileToDataUrl(file)
+  },
+
+  async uploadStoreLogo(file: File, sellerId: string): Promise<string> {
+    if (!PRODUCT_IMAGE_TYPES.has(file.type)) {
+      throw new Error('Please use a JPG, PNG or WEBP image.')
+    }
+    if (file.size > PRODUCT_IMAGE_MAX_BYTES) {
+      throw new Error('Logo image must be 5 MB or smaller.')
+    }
+    try {
+      const supabase = getSupabase()
+      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace('jpeg', 'jpg')
+      const path = `${sellerId}/logo-${Date.now()}.${ext}`
+      const { error } = await supabase.storage.from('store-branding').upload(path, file, {
+        contentType: file.type,
+        upsert: true,
+      })
+      if (!error) {
+        const { data } = supabase.storage.from('store-branding').getPublicUrl(path)
+        if (data?.publicUrl) return data.publicUrl
+      }
+    } catch {
+      // Fallback to data URL below
+    }
+    return fileToDataUrl(file)
+  },
+
+  async uploadUserAvatar(file: File, userId: string): Promise<string> {
+    if (!PRODUCT_IMAGE_TYPES.has(file.type)) {
+      throw new Error('Please use a JPG, PNG or WEBP image.')
+    }
+    if (file.size > PRODUCT_IMAGE_MAX_BYTES) {
+      throw new Error('Profile image must be 5 MB or smaller.')
+    }
+    try {
+      const supabase = getSupabase()
+      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace('jpeg', 'jpg')
+      const path = `${userId}/avatar-${Date.now()}.${ext}`
+      const { error } = await supabase.storage.from('profile-images').upload(path, file, {
+        contentType: file.type,
+        upsert: true,
+      })
+      if (!error) {
+        const { data } = supabase.storage.from('profile-images').getPublicUrl(path)
+        if (data?.publicUrl) return data.publicUrl
+      }
+    } catch {
+      // Fallback to data URL below
+    }
+    return fileToDataUrl(file)
+  },
+
+  async uploadVoiceNote(blob: Blob, userId: string): Promise<string> {
+    try {
+      const supabase = getSupabase()
+      const ext = blob.type.includes('ogg') ? 'ogg' : blob.type.includes('mp4') ? 'm4a' : blob.type.includes('wav') ? 'wav' : 'webm'
+      const path = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+      const { error } = await supabase.storage.from('voice-notes').upload(path, blob, {
+        contentType: blob.type || 'audio/webm',
+        upsert: false,
+      })
+      if (!error) {
+        const { data } = supabase.storage.from('voice-notes').getPublicUrl(path)
+        if (data?.publicUrl) return data.publicUrl
+      } else {
+        console.warn('[uploadVoiceNote] Storage upload notice:', error.message)
+      }
+    } catch (err) {
+      console.warn('[uploadVoiceNote] Storage fallback to DataURL:', err)
+    }
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = () => reject(new Error('Failed to encode audio.'))
+      reader.readAsDataURL(blob)
+    })
+  },
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = () => reject(new Error('Failed to read file from device.'))
+    reader.readAsDataURL(file)
+  })
 }
 
 /* ════════════════════════════════════════════════════════════════
@@ -1787,6 +2031,146 @@ export const bankDetails = {
     }
   },
 
+  async getConfig(sellerId: string, storeId?: string): Promise<PaymentAccountsConfig> {
+    const store = (storeId ? stores.byId(storeId) : undefined) || stores.bySeller(sellerId)
+    const seller = users.byId(sellerId)
+    const fallbackTitle = store?.name || seller?.full_name || 'Store Seller'
+    const fallbackNumber = seller?.phone || '0312343452'
+
+    const sanitizeConfig = (cfg: PaymentAccountsConfig): PaymentAccountsConfig => ({
+      ...cfg,
+      wallets: (cfg.wallets || []).map((w) => ({
+        ...w,
+        account_title: (!w.account_title || w.account_title === 'Baloch Export Hub' || w.account_title === 'Store Seller') ? fallbackTitle : w.account_title,
+      })),
+      banks: (cfg.banks || []).map((b) => ({
+        ...b,
+        account_title: (!b.account_title || b.account_title === 'Baloch Export Hub' || b.account_title === 'Store Seller') ? fallbackTitle : b.account_title,
+      })),
+    })
+
+    // Try local storage cache first
+    try {
+      const local = localStorage.getItem(`beh-seller-payment-${sellerId}`)
+      if (local) {
+        const parsed = JSON.parse(local)
+        if (parsed?.wallets && parsed?.banks) return sanitizeConfig(parsed)
+      }
+    } catch { /* noop */ }
+
+    // Fetch from Supabase
+    const dbRecord = await bankDetails.get(sellerId)
+    if (dbRecord?.payment_instructions) {
+      try {
+        const parsed = JSON.parse(dbRecord.payment_instructions)
+        if (parsed?.wallets && parsed?.banks) return sanitizeConfig(parsed)
+      } catch { /* not JSON */ }
+    }
+
+    if (dbRecord) {
+      const isWallet = ['easypaisa', 'jazzcash', 'nayapay', 'sadapay'].some((w) =>
+        (dbRecord.bank_name || '').toLowerCase().includes(w),
+      )
+      const provider = isWallet
+        ? (dbRecord.bank_name.toLowerCase().replace(/\s+/g, '') as any)
+        : 'easypaisa'
+
+      const cfg: PaymentAccountsConfig = {
+        wallets: [
+          {
+            id: 'w-primary',
+            provider: isWallet ? provider : 'easypaisa',
+            provider_name: isWallet ? dbRecord.bank_name : 'Easypaisa',
+            account_title: dbRecord.account_title || fallbackTitle,
+            account_number: dbRecord.account_number || fallbackNumber,
+            instructions: dbRecord.payment_instructions || 'Transfer order total and upload screenshot.',
+            is_active: true,
+          },
+        ],
+        banks: !isWallet && dbRecord.bank_name ? [
+          {
+            id: 'b-primary',
+            bank_name: dbRecord.bank_name,
+            account_title: dbRecord.account_title || fallbackTitle,
+            account_number: dbRecord.account_number || fallbackNumber,
+            iban: dbRecord.iban || '',
+            instructions: dbRecord.payment_instructions || 'Direct bank wire transfer to seller account.',
+            is_active: true,
+          },
+        ] : [
+          {
+            id: 'b-default',
+            bank_name: 'Meezan Bank',
+            account_title: fallbackTitle,
+            account_number: '0102030405',
+            iban: 'PK42MEZN0001020304050000',
+            branch: 'Quetta Branch',
+            instructions: 'Direct bank transfer to store account.',
+            is_active: true,
+          },
+        ],
+        cod_enabled: true,
+      }
+      return sanitizeConfig(cfg)
+    }
+
+    // Default configuration for a seller
+    return {
+      wallets: [
+        {
+          id: 'w-1',
+          provider: 'easypaisa',
+          provider_name: 'Easypaisa',
+          account_title: fallbackTitle,
+          account_number: fallbackNumber,
+          instructions: 'Send payment via Easypaisa mobile account.',
+          is_active: true,
+        },
+        {
+          id: 'w-2',
+          provider: 'jazzcash',
+          provider_name: 'JazzCash',
+          account_title: fallbackTitle,
+          account_number: fallbackNumber,
+          instructions: 'Send payment via JazzCash mobile account.',
+          is_active: true,
+        },
+        {
+          id: 'w-3',
+          provider: 'sadapay',
+          provider_name: 'SadaPay',
+          account_title: fallbackTitle,
+          account_number: fallbackNumber,
+          instructions: 'Send payment via SadaPay wallet/IBAN.',
+          is_active: true,
+        },
+        {
+          id: 'w-4',
+          provider: 'nayapay',
+          provider_name: 'NayaPay',
+          account_title: fallbackTitle,
+          account_number: fallbackNumber,
+          instructions: 'Send payment via NayaPay.',
+          is_active: true,
+        },
+      ],
+      banks: [
+        {
+          id: 'b-1',
+          bank_name: 'Meezan Bank',
+          account_title: fallbackTitle,
+          account_number: '020101034291',
+          iban: 'PK42MEZN00020101034291',
+          branch: 'Quetta Main Branch',
+          instructions: 'Direct transfer to seller store account.',
+          is_active: true,
+        },
+      ],
+      cod_enabled: true,
+      instructions: 'Please transfer order total and provide TID / screenshot proof.',
+    }
+  },
+
   async save(sellerId: string, details: { bank_name: string; account_title: string; account_number: string; iban?: string; payment_instructions?: string }): Promise<SellerBankDetails> {
     const supabase = getSupabase()
     const payload = {
@@ -1806,5 +2190,122 @@ export const bankDetails = {
     if (error) throw new Error(error.message)
     emitChange()
     return data as SellerBankDetails
+  },
+
+  async saveConfig(sellerId: string, config: PaymentAccountsConfig): Promise<PaymentAccountsConfig> {
+    try {
+      localStorage.setItem(`beh-seller-payment-${sellerId}`, JSON.stringify(config))
+    } catch { /* noop */ }
+
+    const primaryBank = config.banks.find((b) => b.is_active) || config.banks[0]
+    const primaryWallet = config.wallets.find((w) => w.is_active) || config.wallets[0]
+
+    const bank_name = primaryBank?.bank_name || primaryWallet?.provider_name || 'Bank Transfer'
+    const account_title = primaryBank?.account_title || primaryWallet?.account_title || ''
+    const account_number = primaryBank?.account_number || primaryWallet?.account_number || ''
+    const iban = primaryBank?.iban || primaryWallet?.account_number || ''
+
+    try {
+      await bankDetails.save(sellerId, {
+        bank_name,
+        account_title,
+        account_number,
+        iban,
+        payment_instructions: JSON.stringify(config),
+      })
+    } catch (e) {
+      console.warn('[bankDetails.saveConfig] Supabase sync fallback to localStorage:', e)
+    }
+
+    emitChange()
+    return config
+  },
+}
+
+/* ════════════════════════════════════════════════════════════════
+   PLATFORM OWNER PAYMENT ACCOUNTS (Admin -> Sellers)
+   ════════════════════════════════════════════════════════════════ */
+
+const DEFAULT_PLATFORM_PAYMENT_ACCOUNTS: PaymentAccountsConfig = {
+  wallets: [
+    {
+      id: 'pw-nayapay',
+      provider: 'nayapay',
+      provider_name: 'NayaPay',
+      account_title: 'Baloch Export Hub',
+      account_number: '03332826358',
+      instructions: 'Send official platform fee via NayaPay and submit transaction ID/screenshot.',
+      is_active: true,
+    },
+    {
+      id: 'pw-sadapay',
+      provider: 'sadapay',
+      provider_name: 'SadaPay',
+      account_title: 'Baloch Export Hub',
+      account_number: '03332826358',
+      instructions: 'Send official platform fee via SadaPay and submit transaction ID/screenshot.',
+      is_active: true,
+    },
+    {
+      id: 'pw-easypaisa',
+      provider: 'easypaisa',
+      provider_name: 'Easypaisa',
+      account_title: 'Baloch Export Hub',
+      account_number: '03332826358',
+      instructions: 'Transfer fee to official platform Easypaisa account.',
+      is_active: true,
+    },
+    {
+      id: 'pw-jazzcash',
+      provider: 'jazzcash',
+      provider_name: 'JazzCash',
+      account_title: 'Baloch Export Hub',
+      account_number: '03332826358',
+      instructions: 'Transfer fee to official platform JazzCash account.',
+      is_active: true,
+    },
+  ],
+  banks: [
+    {
+      id: 'pb-meezan',
+      bank_name: 'Meezan Bank',
+      account_title: 'Baloch Export Hub',
+      account_number: '0201010892341',
+      iban: 'PK42MEZN000201010892341',
+      branch: 'Quetta Main Branch',
+      instructions: 'Transfer subscription renewal fee via Online Banking / ATM to official Meezan Bank account.',
+      is_active: true,
+    },
+    {
+      id: 'pb-hbl',
+      bank_name: 'Habib Bank Limited (HBL)',
+      account_title: 'Baloch Export Hub',
+      account_number: '23017900124403',
+      iban: 'PK18HABB0023017900124403',
+      branch: 'Jinnah Road Quetta',
+      instructions: 'Transfer fee via HBL Internet Banking / ATM to official HBL account.',
+      is_active: true,
+    },
+  ],
+  instructions: 'When subscription renewal is due (PKR 1,200/mo) or registration fee, select an official platform account above and share TID/screenshot with administration.',
+}
+
+export const platformAccounts = {
+  get(): PaymentAccountsConfig {
+    try {
+      const stored = localStorage.getItem('beh-platform-payment-accounts')
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (parsed?.wallets && parsed?.banks) return parsed
+      }
+    } catch { /* noop */ }
+    return DEFAULT_PLATFORM_PAYMENT_ACCOUNTS
+  },
+
+  async save(config: PaymentAccountsConfig): Promise<void> {
+    try {
+      localStorage.setItem('beh-platform-payment-accounts', JSON.stringify(config))
+    } catch { /* noop */ }
+    emitChange()
   },
 }

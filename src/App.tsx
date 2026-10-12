@@ -1,6 +1,8 @@
 import { lazy, Suspense, useEffect } from 'react'
 import { Route, Routes, useLocation } from 'react-router-dom'
 import { ThemeProvider, AuthProvider } from '@/lib/providers'
+import { VoiceCallProvider } from '@/components/shared/VoiceCallContext'
+import { VoiceCallModal } from '@/components/shared/VoiceCallModal'
 import { PublicLayout, NotFound, RequireAuth } from '@/components/layout/PublicLayout'
 import { BuyerShell, SellerShell, AdminShell } from '@/components/layout/Shells'
 
@@ -29,6 +31,8 @@ const CartPage = lazy(() => import('@/pages/market/Cart').then((m) => ({ default
 const WishlistPage = lazy(() => import('@/pages/market/Cart').then((m) => ({ default: m.WishlistPage })))
 const CheckoutPage = lazy(() => import('@/pages/market/Cart').then((m) => ({ default: m.CheckoutPage })))
 const OrderConfirmPage = lazy(() => import('@/pages/market/Cart').then((m) => ({ default: m.OrderConfirmPage })))
+const OrderTrackingPage = lazy(() => import('@/pages/market/OrderTrackingPage').then((m) => ({ default: m.OrderTrackingPage })))
+
 
 const BuyerOverview = lazy(() => import('@/pages/buyer/BuyerDashboard').then((m) => ({ default: m.BuyerOverview })))
 const BuyerOrders = lazy(() => import('@/pages/buyer/BuyerDashboard').then((m) => ({ default: m.BuyerOrders })))
@@ -85,45 +89,50 @@ export default function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <ScrollToTop />
-        <Suspense fallback={<Fallback />}>
-          <Routes>
-            {/* Auth — own full-screen layout (branding included) */}
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
+        <VoiceCallProvider>
+          <VoiceCallModal />
+          <ScrollToTop />
+          <Suspense fallback={<Fallback />}>
+            <Routes>
+              {/* Auth — own full-screen layout (branding included) */}
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/register" element={<RegisterPage />} />
 
-            {/* Public site (landing + info + marketplace) */}
-            <Route element={<PublicLayout />}>
-              <Route path="/" element={<LandingPage />} />
-              <Route path="/about" element={<AboutPage />} />
-              <Route path="/how-it-works" element={<HowItWorksPage />} />
-              <Route path="/categories" element={<CategoriesPage />} />
-              <Route path="/trust" element={<TrustPage />} />
-              <Route path="/delivery" element={<DeliveryPage />} />
-              <Route path="/become-seller" element={<BecomeSellerPage />} />
-              <Route path="/contact" element={<ContactPage />} />
-              <Route path="/unsubscribe" element={<UnsubscribePage />} />
-              <Route path="/faq" element={<DocPage />} />
-              <Route path="/help" element={<DocPage />} />
-              <Route path="/terms" element={<DocPage />} />
-              <Route path="/privacy" element={<DocPage />} />
-              <Route path="/refund-policy" element={<DocPage />} />
-              <Route path="/seller-guide" element={<DocPage />} />
+              {/* Public site (landing + info + marketplace) */}
+              <Route element={<PublicLayout />}>
+                <Route path="/" element={<LandingPage />} />
+                <Route path="/about" element={<AboutPage />} />
+                <Route path="/how-it-works" element={<HowItWorksPage />} />
+                <Route path="/categories" element={<CategoriesPage />} />
+                <Route path="/trust" element={<TrustPage />} />
+                <Route path="/delivery" element={<DeliveryPage />} />
+                <Route path="/become-seller" element={<BecomeSellerPage />} />
+                <Route path="/contact" element={<ContactPage />} />
+                <Route path="/unsubscribe" element={<UnsubscribePage />} />
+                <Route path="/faq" element={<DocPage />} />
+                <Route path="/help" element={<DocPage />} />
+                <Route path="/terms" element={<DocPage />} />
+                <Route path="/privacy" element={<DocPage />} />
+                <Route path="/refund-policy" element={<DocPage />} />
+                <Route path="/seller-guide" element={<DocPage />} />
 
-              <Route path="/products" element={<ProductsPage />} />
-              <Route path="/search" element={<SearchPage />} />
-              <Route path="/category/:slug" element={<CategoryPage />} />
-              <Route path="/sellers" element={<SellersPage />} />
-              <Route path="/store/:slug" element={<StorePage />} />
-              <Route path="/seller/:id" element={<StoreBySellerPage />} />
-              <Route path="/product/:id" element={<ProductPage />} />
-              <Route path="/cart" element={<CartPage />} />
-              <Route path="/wishlist" element={<WishlistPage />} />
-              <Route path="/checkout" element={<CheckoutPage />} />
-              <Route path="/order/:code" element={<OrderConfirmPage />} />
+                <Route path="/products" element={<ProductsPage />} />
+                <Route path="/search" element={<SearchPage />} />
+                <Route path="/category/:slug" element={<CategoryPage />} />
+                <Route path="/sellers" element={<SellersPage />} />
+                <Route path="/store/:slug" element={<StorePage />} />
+                <Route path="/seller/:id" element={<StoreBySellerPage />} />
+                <Route path="/product/:id" element={<ProductPage />} />
+                <Route path="/cart" element={<CartPage />} />
+                <Route path="/wishlist" element={<WishlistPage />} />
+                <Route path="/checkout" element={<CheckoutPage />} />
+                <Route path="/order/:code" element={<OrderConfirmPage />} />
+                <Route path="/orders/track/:id" element={<OrderTrackingPage />} />
+                <Route path="/orders/track" element={<OrderTrackingPage />} />
+                <Route path="/order/track/:id" element={<OrderTrackingPage />} />
 
-              <Route path="*" element={<NotFound />} />
-            </Route>
+                <Route path="*" element={<NotFound />} />
+              </Route>
 
             {/* Buyer dashboard — any authenticated user */}
             <Route path="/dashboard" element={<RequireAuth><BuyerShell /></RequireAuth>}>
@@ -172,6 +181,7 @@ export default function App() {
             </Route>
           </Routes>
         </Suspense>
+        </VoiceCallProvider>
       </AuthProvider>
     </ThemeProvider>
   )

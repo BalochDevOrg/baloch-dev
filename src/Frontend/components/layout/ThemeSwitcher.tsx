@@ -71,11 +71,12 @@ export function ThemeSwitcher({
         onClick={() => setOpen((o) => !o)}
         onKeyDown={onTriggerKeyDown}
         className={cn(
-          'inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-line bg-surface text-xs font-semibold text-fg transition hover:bg-surface-2 hover:border-brand shadow-2xs',
+          className?.includes('hidden') ? '' : 'inline-flex',
+          'h-9 shrink-0 items-center gap-1.5 rounded-full border border-line bg-surface text-xs font-semibold text-fg transition hover:bg-surface-2 hover:border-brand shadow-2xs',
           compact
             ? 'w-9 justify-center p-0'
             : responsive
-              ? 'w-9 justify-center p-0 2xl:w-auto 2xl:px-3 2xl:justify-start'
+              ? 'w-9 justify-center p-0 xl:w-auto xl:px-3 xl:justify-start'
               : 'px-2.5 sm:px-3',
           className,
         )}
@@ -90,7 +91,7 @@ export function ThemeSwitcher({
             <span
               className={cn(
                 'text-xs font-semibold text-fg',
-                responsive ? 'hidden 2xl:inline' : 'hidden min-[420px]:inline',
+                responsive ? 'hidden xl:inline' : 'hidden min-[420px]:inline',
               )}
             >
               {current?.label ?? 'Theme'}
@@ -99,7 +100,7 @@ export function ThemeSwitcher({
               size={12}
               className={cn(
                 'text-muted transition-transform duration-200',
-                responsive ? 'hidden 2xl:inline' : '',
+                responsive ? 'hidden xl:inline' : '',
                 open && 'rotate-180',
               )}
             />

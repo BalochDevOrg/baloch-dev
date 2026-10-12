@@ -1,12 +1,12 @@
 import { Fragment, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CheckCircle, Download, Eye, EyeOff, FileBarChart, XCircle } from 'lucide-react'
+import { Building2, CheckCircle, CreditCard, Download, Edit3, Eye, EyeOff, FileBarChart, Plus, Smartphone, Trash2, XCircle } from 'lucide-react'
 import { Badge, Button, EmptyState, StarRating, Toggle } from '@/components/ui'
 import { OrderBadge, OrderHistoryList } from '@/components/shared/OrderBits'
-import { ensureAdminData, messaging, notifications as notifApi, orders, reports, reviews as reviewsApi, settings, stats, stores, users } from '@/lib/db'
+import { ensureAdminData, messaging, notifications as notifApi, orders, platformAccounts, reports, reviews as reviewsApi, settings, stats, stores, users } from '@/lib/db'
 import { useDb } from '@/lib/providers'
-import { ADMIN_NEXT, formatDate, formatMoney, normalizeOrderStatus, ORDER_STATUS_LABEL, paymentMethodLabel, timeAgo } from '@/lib/util'
-import type { CanonicalOrderStatus } from '@/lib/types'
+import { ADMIN_NEXT, cn, formatDate, formatMoney, normalizeOrderStatus, ORDER_STATUS_LABEL, paymentMethodLabel, timeAgo } from '@/lib/util'
+import type { BankAccount, CanonicalOrderStatus, PaymentAccountsConfig, WalletAccount, WalletProviderId } from '@/lib/types'
 
 const ADMIN_FILTERS: Array<{ id: 'all' | CanonicalOrderStatus; label: string }> = [
   { id: 'all', label: 'All' },
@@ -315,12 +315,467 @@ export function AdminNotifications() {
   )
 }
 
+/* ── Platform Payment Accounts Manager (Admin -> Sellers) ──────── */
+export function AdminPlatformAccountsManager() {
+  const [config, setConfig] = useState<PaymentAccountsConfig>(platformAccounts.get())
+  const [modalType, setModalType] = useState<'add-wallet' | 'add-bank' | 'edit-wallet' | 'edit-bank' | null>(null)
+  const [saved, setSaved] = useState(false)
+  const [walletForm, setWalletForm] = useState<WalletAccount>({
+    id: '', provider: 'easypaisa', provider_name: 'Easypaisa', account_title: 'Baloch Export Hub', account_number: '', instructions: 'Send platform fee and submit TID.', is_active: true,
+  })
+  const [bankForm, setBankForm] = useState<BankAccount>({
+    id: '', bank_name: 'Meezan Bank', account_title: 'Baloch Export Hub', account_number: '', iban: '', branch: 'Quetta Main Branch', instructions: 'Transfer fee via Online Banking and submit TID.', is_active: true,
+  })
+
+  const saveConfig = async (next: PaymentAccountsConfig) => {
+    setConfig(next)
+    await platformAccounts.save(next)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 3000)
+  }
+
+  const toggleWalletActive = async (id: string) => {
+    const updated = {
+      ...config,
+      wallets: config.wallets.map((w) => w.id === id ? { ...w, is_active: !w.is_active } : w),
+    }
+    await saveConfig(updated)
+  }
+
+  const toggleBankActive = async (id: string) => {
+    const updated = {
+      ...config,
+      banks: config.banks.map((b) => b.id === id ? { ...b, is_active: !b.is_active } : b),
+    }
+    await saveConfig(updated)
+  }
+
+  const deleteWallet = async (id: string) => {
+    if (!confirm('Delete this platform wallet account?')) return
+    const updated = { ...config, wallets: config.wallets.filter((w) => w.id !== id) }
+    await saveConfig(updated)
+  }
+
+  const deleteBank = async (id: string) => {
+    if (!confirm('Delete this platform bank account?')) return
+    const updated = { ...config, banks: config.banks.filter((b) => b.id !== id) }
+    await saveConfig(updated)
+  }
+
+  const openAddWallet = () => {
+    setWalletForm({
+      id: '',
+      provider: 'easypaisa',
+      provider_name: 'Easypaisa',
+      account_title: 'Baloch Export Hub',
+      account_number: '',
+      instructions: 'Transfer registration / subscription fee and submit TID.',
+      is_active: true,
+    })
+    setModalType('add-wallet')
+  }
+
+  const openAddBank = () => {
+    setBankForm({
+      id: '',
+      bank_name: 'Meezan Bank',
+      account_title: 'Baloch Export Hub',
+      account_number: '',
+      iban: '',
+      branch: 'Quetta Main Branch',
+      instructions: 'Transfer subscription renewal fee via Online Banking and submit TID.',
+      is_active: true,
+    })
+    setModalType('add-bank')
+  }
+
+  const openEditWallet = (w: WalletAccount) => {
+    setWalletForm(w)
+    setModalType('edit-wallet')
+  }
+
+  const openEditBank = (b: BankAccount) => {
+    setBankForm(b)
+    setModalType('edit-bank')
+  }
+
+  const handleWalletSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    let nextWallets = [...config.wallets]
+    if (modalType === 'edit-wallet') {
+      nextWallets = nextWallets.map((w) => w.id === walletForm.id ? walletForm : w)
+    } else {
+      nextWallets.push({ ...walletForm, id: `pw-${Date.now()}` })
+    }
+    await saveConfig({ ...config, wallets: nextWallets })
+    setModalType(null)
+  }
+
+  const handleBankSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    let nextBanks = [...config.banks]
+    if (modalType === 'edit-bank') {
+      nextBanks = nextBanks.map((b) => b.id === bankForm.id ? bankForm : b)
+    } else {
+      nextBanks.push({ ...bankForm, id: `pb-${Date.now()}` })
+    }
+    await saveConfig({ ...config, banks: nextBanks })
+    setModalType(null)
+  }
+
+  return (
+    <section className="card space-y-5 p-6" aria-labelledby="asp-platform-payments">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <h3 id="asp-platform-payments" className="font-display text-lg font-semibold flex items-center gap-2">
+              <CreditCard size={18} className="text-terracotta" /> Platform Owner Payment Accounts
+            </h3>
+            {saved && (
+              <span className="rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-xs font-bold text-emerald-600">
+                Saved ✓
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-muted mt-0.5">
+            Accounts displayed on seller dashboards for paying registration fees and monthly subscriptions (PKR 1,200/mo).
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={openAddWallet}
+            className="inline-flex items-center gap-1 rounded-full border border-line bg-surface hover:border-terracotta px-3 py-1 text-xs font-bold transition shadow-2xs"
+          >
+            <Plus size={13} className="text-terracotta" /> Add Wallet
+          </button>
+          <button
+            type="button"
+            onClick={openAddBank}
+            className="inline-flex items-center gap-1 rounded-full bg-brand text-onbrand hover:opacity-95 px-3 py-1 text-xs font-bold transition shadow-2xs"
+          >
+            <Plus size={13} /> Add Bank
+          </button>
+        </div>
+      </div>
+
+      {/* Wallets */}
+      <div className="space-y-3 pt-1">
+        <div className="flex items-center justify-between border-b border-line pb-1.5">
+          <span className="text-xs font-bold uppercase tracking-wider text-muted flex items-center gap-1.5">
+            <Smartphone size={13} className="text-terracotta" /> Platform Wallets ({config.wallets.length})
+          </span>
+          <span className="text-[0.68rem] text-faint">Easypaisa, JazzCash, SadaPay, NayaPay</span>
+        </div>
+
+        {config.wallets.length === 0 ? (
+          <p className="text-xs text-muted py-1">No platform wallets configured.</p>
+        ) : (
+          <div className="grid gap-2.5 sm:grid-cols-2">
+            {config.wallets.map((w) => (
+              <div key={w.id} className="rounded-2xl border border-line bg-surface-2/40 p-3.5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-display font-bold text-sm text-brand dark:text-fg">{w.provider_name}</span>
+                  <span className={cn(
+                    'rounded-full px-2 py-0.5 text-[0.62rem] font-bold border',
+                    w.is_active ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' : 'bg-surface text-faint border-line'
+                  )}>
+                    {w.is_active ? 'Active' : 'Inactive'}
+                  </span>
+                </div>
+                <div className="text-xs space-y-0.5 font-mono">
+                  <p className="text-muted"><span className="text-faint font-sans">Title:</span> {w.account_title}</p>
+                  <p className="text-terracotta font-bold"><span className="text-faint font-sans font-normal">Number:</span> {w.account_number}</p>
+                </div>
+                {w.instructions && <p className="text-[0.7rem] text-faint line-clamp-1">{w.instructions}</p>}
+                <div className="flex items-center justify-between border-t border-line/60 pt-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => openEditWallet(w)} className="text-brand dark:text-gold hover:underline font-bold inline-flex items-center gap-1">
+                      <Edit3 size={11} /> Edit
+                    </button>
+                    <span className="text-line">•</span>
+                    <button type="button" onClick={() => deleteWallet(w.id)} className="text-rose-500 hover:underline font-bold inline-flex items-center gap-1">
+                      <Trash2 size={11} /> Delete
+                    </button>
+                  </div>
+                  <button type="button" onClick={() => toggleWalletActive(w.id)} className="text-[0.7rem] text-muted hover:text-fg font-semibold">
+                    {w.is_active ? 'Deactivate' : 'Activate'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Commercial Banks */}
+      <div className="space-y-3 pt-2">
+        <div className="flex items-center justify-between border-b border-line pb-1.5">
+          <span className="text-xs font-bold uppercase tracking-wider text-muted flex items-center gap-1.5">
+            <Building2 size={13} className="text-brand" /> Platform Commercial Banks ({config.banks.length})
+          </span>
+          <span className="text-[0.68rem] text-faint">Meezan, HBL, Allied, etc.</span>
+        </div>
+
+        {config.banks.length === 0 ? (
+          <p className="text-xs text-muted py-1">No platform bank accounts configured.</p>
+        ) : (
+          <div className="grid gap-2.5 sm:grid-cols-2">
+            {config.banks.map((b) => (
+              <div key={b.id} className="rounded-2xl border border-line bg-surface-2/40 p-3.5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-display font-bold text-sm text-brand dark:text-fg">{b.bank_name}</span>
+                  <span className={cn(
+                    'rounded-full px-2 py-0.5 text-[0.62rem] font-bold border',
+                    b.is_active ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' : 'bg-surface text-faint border-line'
+                  )}>
+                    {b.is_active ? 'Active' : 'Inactive'}
+                  </span>
+                </div>
+                <div className="text-xs space-y-0.5 font-mono">
+                  <p className="text-muted"><span className="text-faint font-sans">Title:</span> {b.account_title}</p>
+                  <p className="text-brand dark:text-fg font-bold truncate"><span className="text-faint font-sans font-normal">IBAN/Acc:</span> {b.iban || b.account_number}</p>
+                  {b.branch && <p className="text-[0.7rem] text-faint font-sans">Branch: {b.branch}</p>}
+                </div>
+                <div className="flex items-center justify-between border-t border-line/60 pt-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => openEditBank(b)} className="text-brand dark:text-gold hover:underline font-bold inline-flex items-center gap-1">
+                      <Edit3 size={11} /> Edit
+                    </button>
+                    <span className="text-line">•</span>
+                    <button type="button" onClick={() => deleteBank(b.id)} className="text-rose-500 hover:underline font-bold inline-flex items-center gap-1">
+                      <Trash2 size={11} /> Delete
+                    </button>
+                  </div>
+                  <button type="button" onClick={() => toggleBankActive(b.id)} className="text-[0.7rem] text-muted hover:text-fg font-semibold">
+                    {b.is_active ? 'Deactivate' : 'Activate'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Modal: Add/Edit Wallet */}
+      {(modalType === 'add-wallet' || modalType === 'edit-wallet') && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="card w-full max-w-md p-6 space-y-4 animate-fade-in shadow-xl">
+            <div className="flex items-center justify-between border-b border-line pb-2.5">
+              <h4 className="font-display text-base font-bold text-brand dark:text-fg">
+                {modalType === 'add-wallet' ? 'Add Platform Wallet Account' : 'Edit Platform Wallet'}
+              </h4>
+              <button type="button" onClick={() => setModalType(null)} className="text-muted hover:text-fg">✕</button>
+            </div>
+            <form onSubmit={handleWalletSubmit} className="space-y-3 text-xs">
+              <div>
+                <label className="mb-1 block font-semibold text-fg">Wallet Provider</label>
+                <select
+                  className="field text-xs"
+                  value={walletForm.provider}
+                  onChange={(e) => {
+                    const prov = e.target.value as WalletProviderId
+                    const nameMap: Record<string, string> = {
+                      easypaisa: 'Easypaisa',
+                      jazzcash: 'JazzCash',
+                      sadapay: 'SadaPay',
+                      nayapay: 'NayaPay',
+                      upaisa: 'UPaisa',
+                      other: 'Mobile Wallet',
+                    }
+                    setWalletForm({
+                      ...walletForm,
+                      provider: prov,
+                      provider_name: nameMap[prov] || 'Wallet',
+                    })
+                  }}
+                >
+                  <option value="easypaisa">Easypaisa</option>
+                  <option value="jazzcash">JazzCash</option>
+                  <option value="sadapay">SadaPay</option>
+                  <option value="nayapay">NayaPay</option>
+                  <option value="upaisa">UPaisa</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block font-semibold text-fg">Provider Name</label>
+                <input
+                  className="field text-xs"
+                  value={walletForm.provider_name}
+                  onChange={(e) => setWalletForm({ ...walletForm, provider_name: e.target.value })}
+                  placeholder="e.g. Easypaisa"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block font-semibold text-fg">Account Title</label>
+                <input
+                  className="field text-xs"
+                  value={walletForm.account_title}
+                  onChange={(e) => setWalletForm({ ...walletForm, account_title: e.target.value })}
+                  placeholder="Baloch Export Hub"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block font-semibold text-fg">Mobile / Account Number</label>
+                <input
+                  className="field text-xs font-mono"
+                  value={walletForm.account_number}
+                  onChange={(e) => setWalletForm({ ...walletForm, account_number: e.target.value })}
+                  placeholder="03332826358"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block font-semibold text-fg">Instructions for Sellers</label>
+                <input
+                  className="field text-xs"
+                  value={walletForm.instructions || ''}
+                  onChange={(e) => setWalletForm({ ...walletForm, instructions: e.target.value })}
+                  placeholder="Transfer PKR 1,200 and submit TID."
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="p-wallet-chk"
+                  checked={walletForm.is_active}
+                  onChange={(e) => setWalletForm({ ...walletForm, is_active: e.target.checked })}
+                />
+                <label htmlFor="p-wallet-chk" className="font-semibold text-fg cursor-pointer">
+                  Active (visible on seller dashboards)
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-line">
+                <Button size="sm" variant="ghost" type="button" onClick={() => setModalType(null)}>Cancel</Button>
+                <button type="submit" className="rounded-full bg-brand text-onbrand px-4 py-1.5 font-bold hover:opacity-95">
+                  Save Platform Wallet
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Add/Edit Bank */}
+      {(modalType === 'add-bank' || modalType === 'edit-bank') && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="card w-full max-w-md p-6 space-y-4 animate-fade-in shadow-xl">
+            <div className="flex items-center justify-between border-b border-line pb-2.5">
+              <h4 className="font-display text-base font-bold text-brand dark:text-fg">
+                {modalType === 'add-bank' ? 'Add Platform Commercial Bank' : 'Edit Platform Bank'}
+              </h4>
+              <button type="button" onClick={() => setModalType(null)} className="text-muted hover:text-fg">✕</button>
+            </div>
+            <form onSubmit={handleBankSubmit} className="space-y-3 text-xs">
+              <div>
+                <label className="mb-1 block font-semibold text-fg">Bank Name</label>
+                <input
+                  className="field text-xs"
+                  value={bankForm.bank_name}
+                  onChange={(e) => setBankForm({ ...bankForm, bank_name: e.target.value })}
+                  placeholder="Meezan Bank"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block font-semibold text-fg">Account Title</label>
+                <input
+                  className="field text-xs"
+                  value={bankForm.account_title}
+                  onChange={(e) => setBankForm({ ...bankForm, account_title: e.target.value })}
+                  placeholder="Baloch Export Hub"
+                  required
+                />
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block font-semibold text-fg">Account Number</label>
+                  <input
+                    className="field text-xs font-mono"
+                    value={bankForm.account_number}
+                    onChange={(e) => setBankForm({ ...bankForm, account_number: e.target.value })}
+                    placeholder="0201010892341"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block font-semibold text-fg">Branch (optional)</label>
+                  <input
+                    className="field text-xs"
+                    value={bankForm.branch || ''}
+                    onChange={(e) => setBankForm({ ...bankForm, branch: e.target.value })}
+                    placeholder="Quetta Main Branch"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block font-semibold text-fg">IBAN</label>
+                <input
+                  className="field text-xs font-mono"
+                  value={bankForm.iban || ''}
+                  onChange={(e) => setBankForm({ ...bankForm, iban: e.target.value })}
+                  placeholder="PK42MEZN000201010892341"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block font-semibold text-fg">Instructions for Sellers</label>
+                <input
+                  className="field text-xs"
+                  value={bankForm.instructions || ''}
+                  onChange={(e) => setBankForm({ ...bankForm, instructions: e.target.value })}
+                  placeholder="Transfer fee via ATM / Online Banking and submit TID."
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="p-bank-chk"
+                  checked={bankForm.is_active}
+                  onChange={(e) => setBankForm({ ...bankForm, is_active: e.target.checked })}
+                />
+                <label htmlFor="p-bank-chk" className="font-semibold text-fg cursor-pointer">
+                  Active (visible on seller dashboards)
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-line">
+                <Button size="sm" variant="ghost" type="button" onClick={() => setModalType(null)}>Cancel</Button>
+                <button type="submit" className="rounded-full bg-brand text-onbrand px-4 py-1.5 font-bold hover:opacity-95">
+                  Save Platform Bank
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </section>
+  )
+}
+
 /* ── Settings ─────────────────────────────────────────────────── */
 export function AdminSettings() {
   useDb()
   const s = settings.get()
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="max-w-3xl space-y-6">
+      {/* Platform Owner Payment Accounts Section */}
+      <AdminPlatformAccountsManager />
+
       <section className="card space-y-5 p-6" aria-labelledby="asp-commerce">
         <h3 id="asp-commerce" className="font-display text-lg font-semibold">Commerce</h3>
         <div className="grid gap-5 sm:grid-cols-2">

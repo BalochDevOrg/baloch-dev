@@ -115,6 +115,36 @@ export interface SellerBankDetails {
   updated_at: string
 }
 
+export type WalletProviderId = 'easypaisa' | 'jazzcash' | 'nayapay' | 'sadapay' | 'upaisa' | 'other'
+
+export interface WalletAccount {
+  id: string
+  provider: WalletProviderId
+  provider_name: string
+  account_title: string
+  account_number: string
+  instructions?: string
+  is_active: boolean
+}
+
+export interface BankAccount {
+  id: string
+  bank_name: string
+  account_title: string
+  account_number: string
+  iban?: string
+  branch?: string
+  instructions?: string
+  is_active: boolean
+}
+
+export interface PaymentAccountsConfig {
+  wallets: WalletAccount[]
+  banks: BankAccount[]
+  cod_enabled?: boolean
+  instructions?: string
+}
+
 export interface CartItem { id: string; user_id: string; product_id: string; qty: number; added_at: string }
 export interface WishlistItem { id: string; user_id: string; product_id: string; added_at: string }
 
@@ -153,12 +183,13 @@ export type OrderStatus =
 export type PaymentStatus = 'paid' | 'pending' | 'submitted' | 'verified' | 'rejected' | 'refunded'
 export type PaymentMethod = 'nayapay' | 'sadapay' | 'easypaisa' | 'cod' | 'bank_transfer' | 'jazzcash'
 
-export const PAYMENT_METHODS: Array<{ id: PaymentMethod; label: string; sub: string; account?: string }> = [
-  { id: 'nayapay', label: 'NayaPay', sub: 'Account: 03332826358 · Title: Baloch Export Hub', account: '03332826358' },
-  { id: 'sadapay', label: 'SadaPay', sub: 'Account: 03332826358 · Title: Baloch Export Hub', account: '03332826358' },
-  { id: 'easypaisa', label: 'Easypaisa', sub: 'Account: 03332826358 · Title: Baloch Export Hub', account: '03332826358' },
+export const PAYMENT_METHODS: Array<{ id: PaymentMethod; label: string; sub: string }> = [
+  { id: 'easypaisa', label: 'Easypaisa', sub: 'Mobile Wallet' },
+  { id: 'jazzcash', label: 'JazzCash', sub: 'Mobile Wallet' },
+  { id: 'nayapay', label: 'NayaPay', sub: 'Digital Wallet' },
+  { id: 'sadapay', label: 'SadaPay', sub: 'Digital Wallet' },
+  { id: 'bank_transfer', label: 'Bank Transfer', sub: 'Direct Bank Wire / IBAN' },
   { id: 'cod', label: 'Cash on Delivery', sub: 'Pay with cash upon package arrival' },
-  { id: 'bank_transfer', label: 'Seller Bank Transfer', sub: 'Direct transfer to seller bank account' },
 ]
 
 export interface OrderStatusHistory {
@@ -201,8 +232,10 @@ export interface Order {
   commission: number
   address: Address
   items: OrderItem[]
+  tracking_token?: string
   created_at: string
 }
+
 
 export interface Payment {
   id: string
@@ -248,6 +281,8 @@ export interface Message {
   receiver_id?: string
   body: string
   read?: boolean
+  voice_url?: string | null
+  voice_duration?: number | null
   created_at: string
 }
 
@@ -315,3 +350,104 @@ export const BUYER_TRACK_STAGES: Array<{
   { status: 'on_way', label: 'On the Way', done: 'Your order is on the way', waiting: 'Waiting for dispatch' },
   { status: 'reached_to_buyer', label: 'Delivered to Buyer', done: 'Your order has been delivered', waiting: 'Waiting for delivery' },
 ]
+
+/* ── Voice Calling Types ───────────────────────────────────────── */
+
+export type CallStatus =
+  | 'idle'
+  | 'calling'
+  | 'ringing'
+  | 'connected'
+  | 'rejected'
+  | 'missed'
+  | 'offline'
+  | 'ended'
+  | 'error'
+
+export interface CallParticipant {
+  id: string
+  name: string
+  avatar?: string | null
+  color?: string | null
+}
+
+export interface CallSession {
+  id: string
+  conversation_id: string
+  caller_id: string
+  callee_id: string
+  status: 'calling' | 'ringing' | 'connected' | 'rejected' | 'missed' | 'ended'
+  started_at: string
+  answered_at?: string | null
+  ended_at?: string | null
+  duration_seconds: number
+  created_at: string
+  updated_at: string
+}
+
+export interface ActiveCall {
+  callId: string
+  conversationId: string
+  role: 'caller' | 'callee'
+  counterpart: CallParticipant
+  status: CallStatus
+  durationSeconds: number
+  isMuted: boolean
+  error?: string | null
+}
+
+/* ── Public Order Tracking Response ────────────────────────────── */
+
+export interface PublicOrderTrackingItem {
+  id: string
+  product_id: string
+  product_name: string
+  price: number
+  quantity: number
+  status: OrderStatus
+  tracking_code?: string | null
+  courier?: string | null
+  estimated_delivery?: string | null
+  image?: string | null
+  store_id?: string | null
+  store_name?: string | null
+  store_slug?: string | null
+}
+
+export interface PublicOrderTrackingHistory {
+  id: string
+  from_status?: string | null
+  to_status: string
+  note?: string | null
+  created_at: string
+}
+
+export interface PublicOrderTracking {
+  id: string
+  code: string
+  status: OrderStatus
+  total: number
+  subtotal: number
+  shipping: number
+  payment_method: string
+  payment: PaymentStatus
+  created_at: string
+  recipient_name: string
+  is_authorized_viewer: boolean
+  items: PublicOrderTrackingItem[]
+  history: PublicOrderTrackingHistory[]
+  destination: {
+    city: string
+    state: string
+    country: string
+  }
+  address_summary?: {
+    full_name: string
+    line1?: string | null
+    city: string
+    state: string
+    country: string
+  }
+  error?: string
+}
+

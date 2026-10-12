@@ -129,15 +129,44 @@ export function LoginPage() {
       <form onSubmit={signIn} className="mt-8 space-y-5" noValidate>
         <Field label="Email" required>
           <div className="relative">
-            <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-faint" />
-            <input id="login-email" name="email" type="email" className="field pl-10" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required />
+            {!email && (
+              <Mail size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-faint" />
+            )}
+            <input
+              id="login-email"
+              name="email"
+              type="email"
+              className="field field-icon-pl"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              required
+            />
           </div>
         </Field>
         <Field label="Password" required>
           <div className="relative">
-            <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-faint" />
-            <input id="login-password" name="password" type={show ? 'text' : 'password'} className="field px-10" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
-            <button type="button" onClick={() => setShow((s) => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-faint hover:text-fg" aria-label={show ? 'Hide password' : 'Show password'}>
+            {!password && (
+              <Lock size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-faint" />
+            )}
+            <input
+              id="login-password"
+              name="password"
+              type={show ? 'text' : 'password'}
+              className="field field-icon-pl pr-10"
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              required
+            />
+            <button
+              type="button"
+              onClick={() => setShow((s) => !s)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-faint hover:text-fg"
+              aria-label={show ? 'Hide password' : 'Show password'}
+            >
               {show ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
           </div>
@@ -207,34 +236,97 @@ export function RegisterPage() {
       <form onSubmit={submit} className="mt-8 space-y-5" noValidate>
         <Field label="Full name" required>
           <div className="relative">
-            <User size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-faint" />
-            <input id="register-full-name" name="full_name" className="field pl-10" placeholder="e.g. Samina Baloch" value={f.full_name} onChange={(e) => setF({ ...f, full_name: e.target.value })} autoComplete="name" required />
+            {!f.full_name && (
+              <User size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-faint" />
+            )}
+            <input
+              id="register-full-name"
+              name="full_name"
+              className="field field-icon-pl"
+              placeholder="e.g. Samina Baloch"
+              value={f.full_name}
+              onChange={(e) => setF({ ...f, full_name: e.target.value })}
+              autoComplete="name"
+              required
+            />
           </div>
         </Field>
         <Field label="Username" required hint="Your public handle — letters, numbers, - _ .">
           <div className="relative">
-            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-faint">@</span>
-            <input id="register-username" name="username" className="field pl-9" placeholder="samina.embroiders" value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} autoComplete="username" required />
+            {!f.username && (
+              <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-faint">@</span>
+            )}
+            <input
+              id="register-username"
+              name="username"
+              className="field field-icon-pl"
+              placeholder="samina.embroiders"
+              value={f.username}
+              onChange={(e) => setF({ ...f, username: e.target.value })}
+              autoComplete="username"
+              required
+            />
           </div>
         </Field>
         <Field label="Email" required>
           <div className="relative">
-            <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-faint" />
-            <input id="register-email" name="email" type="email" className="field pl-10" placeholder="you@example.com" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} autoComplete="email" required />
+            {!f.email && (
+              <Mail size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-faint" />
+            )}
+            <input
+              id="register-email"
+              name="email"
+              type="email"
+              className="field field-icon-pl"
+              placeholder="you@example.com"
+              value={f.email}
+              onChange={(e) => setF({ ...f, email: e.target.value })}
+              autoComplete="email"
+              required
+            />
           </div>
         </Field>
         <div className="grid gap-5 sm:grid-cols-2">
           <Field label="Password" required hint="Minimum 8 characters">
             <div className="relative">
-              <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-faint" />
-              <input id="register-password" name="password" type={show ? 'text' : 'password'} className="field pl-10 pr-9" placeholder="••••••••" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} autoComplete="new-password" required />
+              {!f.password && (
+                <Lock size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-faint" />
+              )}
+              <input
+                id="register-password"
+                name="password"
+                type={show ? 'text' : 'password'}
+                className="field field-icon-pl pr-9"
+                placeholder="••••••••"
+                value={f.password}
+                onChange={(e) => setF({ ...f, password: e.target.value })}
+                autoComplete="new-password"
+                required
+              />
             </div>
           </Field>
           <Field label="Confirm password" required>
             <div className="relative">
-              <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-faint" />
-              <input id="register-confirm" name="confirm" type={show ? 'text' : 'password'} className={`field pl-10 pr-9 ${f.confirm && !match ? '!border-rose-500' : ''}`} placeholder="••••••••" value={f.confirm} onChange={(e) => setF({ ...f, confirm: e.target.value })} autoComplete="new-password" required />
-              <button type="button" onClick={() => setShow((s) => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-faint hover:text-fg" aria-label={show ? 'Hide passwords' : 'Show passwords'}>
+              {!f.confirm && (
+                <Lock size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-faint" />
+              )}
+              <input
+                id="register-confirm"
+                name="confirm"
+                type={show ? 'text' : 'password'}
+                className={`field field-icon-pl pr-9 ${f.confirm && !match ? '!border-rose-500' : ''}`}
+                placeholder="••••••••"
+                value={f.confirm}
+                onChange={(e) => setF({ ...f, confirm: e.target.value })}
+                autoComplete="new-password"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShow((s) => !s)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-faint hover:text-fg"
+                aria-label={show ? 'Hide passwords' : 'Show passwords'}
+              >
                 {show ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>

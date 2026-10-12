@@ -192,7 +192,18 @@ export function CategoryIcon({ name, size = 20, className }: { name: string; siz
 }
 
 /* ── Avatar ───────────────────────────────────────────────────── */
-export function Avatar({ name, color, size = 38, className }: { name: string; color?: string; size?: number; className?: string }) {
+export function Avatar({ name, color, size = 38, className, src }: { name: string; color?: string; size?: number; className?: string; src?: string }) {
+  if (src) {
+    return (
+      <span
+        className={cn('inline-block shrink-0 overflow-hidden rounded-full border border-line bg-surface-2', className)}
+        style={{ width: size, height: size }}
+        aria-hidden
+      >
+        <img src={src} alt={name} className="h-full w-full object-cover" />
+      </span>
+    )
+  }
   return (
     <span
       className={cn('grid shrink-0 place-items-center rounded-full font-semibold text-white', className)}

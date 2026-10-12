@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  ArrowRight, ChevronRight, Heart, MessageCircle, Package, ShoppingBag, Star, Store, Truck, XCircle,
+  ArrowRight, Camera, CheckCircle2, ChevronRight, Heart, Loader2, MessageCircle, Package,
+  ShoppingBag, Star, Store, Truck, Upload, X, XCircle,
 } from 'lucide-react'
 import { Badge, Button, EmptyState, Field, Modal, Reveal, StarRating } from '@/components/ui'
 import { OrderBadge, OrderTimeline } from '@/components/shared/OrderBits'
 import { ProductCard, SellerCard } from '@/components/shared/Market'
-import { cart, orders, products, reviews as reviewsApi, wishlist, stores } from '@/lib/db'
+import { auth, cart, orders, products, reviews as reviewsApi, storage, wishlist, stores } from '@/lib/db'
 import { useAuth, useDb } from '@/lib/providers'
 import { cn, formatDate, formatMoney, isCancellableOrder, paymentMethodLabel, timeAgo } from '@/lib/util'
 import type { Order } from '@/lib/types'
@@ -15,13 +16,45 @@ import { BalochiBottomOrnament, BalochiDochWatermark } from '@/components/shared
 
 /* ── Overview ─────────────────────────────────────────────────── */
 export function BuyerOverview() {
-  const { user } = useAuth()
+  const { user, refreshProfile } = useAuth()
   useDb()
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const [avatarErr, setAvatarErr] = useState('')
+  const [avatarSuccess, setAvatarSuccess] = useState(false)
+
   if (!user) return null
   const myOrders = orders.listByBuyer(user.id)
   const active = myOrders.filter((o) => !['reached_to_buyer', 'delivered', 'cancelled'].includes(o.status))
   const wished = wishlist.list(user.id)
   const cartCount = cart.count(user.id)
+
+  const handleAvatarFile = async (files: FileList | null) => {
+    const file = files?.[0]
+    if (!file || !user) return
+    setAvatarErr('')
+    setAvatarUploading(true)
+    try {
+      const url = await storage.uploadUserAvatar(file, user.id)
+      await auth.updateProfile(user.id, { avatar_url: url })
+      await refreshProfile()
+      setAvatarSuccess(true)
+      setTimeout(() => setAvatarSuccess(false), 2200)
+    } catch (err) {
+      setAvatarErr(err instanceof Error ? err.message : 'Could not upload profile image.')
+    } finally {
+      setAvatarUploading(false)
+    }
+  }
+
+  const handleRemoveAvatar = async () => {
+    if (!user) return
+    try {
+      await auth.updateProfile(user.id, { avatar_url: '' })
+      await refreshProfile()
+    } catch (err) {
+      console.error(err)
+    }
+  }
 
   const stats = [
     {
@@ -56,24 +89,97 @@ export function BuyerOverview() {
 
   return (
     <div className="space-y-6 sm:space-y-8">
-      {/* ── Welcome Banner ── */}
-      <div className="relative overflow-hidden rounded-3xl border border-line bg-surface p-6 sm:p-9 shadow-xs">
+      {/* ── Welcome Banner with Profile Image ── */}
+      <div className="relative overflow-hidden rounded-3xl border border-line bg-surface p-4 sm:p-9 shadow-xs">
         {/* Right corner Doch embroidery watermark */}
         <div className="pointer-events-none absolute -right-6 -top-6 hidden sm:block opacity-35">
           <BalochiDochWatermark size={190} />
         </div>
 
-        <div className="relative z-10 max-w-xl">
-          <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-terracotta">
-            <span>Welcome</span>
-            <span className="h-0.5 w-6 bg-terracotta inline-block rounded-full" />
-          </p>
-          <h2 className="mt-2 font-display text-2xl font-bold tracking-tight text-brand dark:text-fg sm:text-3xl lg:text-4xl">
-            {user.full_name}
-          </h2>
-          <p className="mt-2.5 text-sm sm:text-base leading-relaxed text-muted">
-            Explore your orders, manage your wishlist and enjoy a seamless shopping experience at Baloch Export Hub.
-          </p>
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-5">
+            {/* Profile Avatar with Camera Upload */}
+            <div className="relative shrink-0">
+              {user.avatar_url ? (
+                <img
+                  src={user.avatar_url}
+                  alt={user.full_name}
+                  className="h-20 w-20 sm:h-24 sm:w-24 rounded-2xl object-cover border-2 border-brand/30 shadow-md ring-2 ring-terracotta/20"
+                />
+              ) : (
+                <span
+                  className="grid h-20 w-20 sm:h-24 sm:w-24 place-items-center rounded-2xl font-display text-2xl sm:text-3xl font-bold text-white shadow-md"
+                  style={{ background: `linear-gradient(135deg, ${user.avatar_color || '#0d7d76'}, ${user.avatar_color || '#0d7d76'}bb)` }}
+                >
+                  {user.full_name.split(' ').slice(0, 2).map((w) => w[0]).join('')}
+                </span>
+              )}
+
+              {avatarUploading && (
+                <div className="absolute inset-0 grid place-items-center rounded-2xl bg-black/50 text-white">
+                  <Loader2 size={24} className="animate-spin" />
+                </div>
+              )}
+
+              <label
+                className="absolute -bottom-1 -right-1 grid h-8 w-8 cursor-pointer place-items-center rounded-full bg-brand text-onbrand shadow-md hover:scale-105 transition"
+                title="Upload profile photo from device"
+              >
+                <Camera size={15} />
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+                  className="sr-only"
+                  onChange={(e) => handleAvatarFile(e.target.files)}
+                  disabled={avatarUploading}
+                />
+              </label>
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-terracotta">
+                <span>Welcome</span>
+                <span className="h-0.5 w-6 bg-terracotta inline-block rounded-full" />
+              </p>
+              <h2 className="font-display text-2xl font-bold tracking-tight text-brand dark:text-fg sm:text-3xl">
+                {user.full_name}
+              </h2>
+
+              <div className="flex flex-wrap items-center gap-3 pt-0.5">
+                <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-line bg-surface-2 px-3 py-1 text-xs font-semibold text-fg transition hover:border-brand hover:bg-surface shadow-2xs">
+                  <Camera size={13} className="text-brand" />
+                  <span>{user.avatar_url ? 'Change photo' : 'Upload photo'}</span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+                    className="sr-only"
+                    onChange={(e) => handleAvatarFile(e.target.files)}
+                    disabled={avatarUploading}
+                  />
+                </label>
+                {user.avatar_url && (
+                  <button
+                    type="button"
+                    onClick={handleRemoveAvatar}
+                    className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs text-rose-500 hover:bg-rose-500/10 transition"
+                  >
+                    <X size={12} /> Remove
+                  </button>
+                )}
+                {avatarSuccess && (
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600">
+                    <CheckCircle2 size={13} /> Saved!
+                  </span>
+                )}
+              </div>
+
+              {avatarErr && <p className="text-xs text-rose-500">{avatarErr}</p>}
+
+              <p className="pt-1 text-xs sm:text-sm leading-relaxed text-muted max-w-xl">
+                Explore your orders, manage your wishlist and enjoy a seamless shopping experience at Baloch Export Hub.
+              </p>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -335,14 +441,15 @@ function OrderCard({ order, open, onToggle }: { order: Order; open: boolean; onT
               )
             })}
           </ul>
-          <div className="mt-5 flex flex-wrap items-center justify-between gap-4">
+          <div className="mt-5 flex flex-col xs:flex-row items-stretch xs:items-center justify-between gap-3 pt-3 border-t border-line/40">
             <p className="text-xs text-muted">{paymentMethodLabel(order.payment_method)} · {order.payment === 'paid' ? 'Paid' : order.payment === 'refunded' ? 'Refunded' : 'Payment pending'}</p>
-            <div className="flex gap-2.5">
+            <div className="flex flex-wrap items-center gap-2">
               {cancellable && (
                 <Button size="sm" onClick={() => orders.cancel(order.id)}>
                   <XCircle size={14} /> Cancel order
                 </Button>
               )}
+              <Button to={`/orders/track/${order.code}`} size="sm" variant="gold">Track parcel</Button>
               <Button to={`/order/${order.code}`} size="sm" variant="ghost">Receipt</Button>
             </div>
           </div>

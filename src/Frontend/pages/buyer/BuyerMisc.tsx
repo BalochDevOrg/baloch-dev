@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Check, CheckCircle2, MapPin, Star, Store, Trash2 } from 'lucide-react'
+import { Camera, Check, CheckCircle2, Loader2, MapPin, Star, Store, Trash2, Upload, X } from 'lucide-react'
 import { Badge, Button, EmptyState, Field, Reveal, Toggle } from '@/components/ui'
-import { addresses as addrApi, auth, emailSubscribers, stores } from '@/lib/db'
+import { addresses as addrApi, auth, emailSubscribers, storage, stores } from '@/lib/db'
 import { useAuth, useDb, THEME_OPTIONS, useTheme } from '@/lib/providers'
 import { StoreBannerGallery } from '@/components/shared/StoreBannerGallery'
 
@@ -10,32 +10,101 @@ import { StoreBannerGallery } from '@/components/shared/StoreBannerGallery'
 const COLORS = ['#0d7d76', '#b9821f', '#a4123f', '#5c4a7d', '#0f5d8a', '#3f7d3a']
 
 export function BuyerProfile() {
-  const { user } = useAuth()
+  const { user, refreshProfile } = useAuth()
   useDb()
   const [saved, setSaved] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [uploadErr, setUploadErr] = useState('')
   const [f, setF] = useState(() => ({
     full_name: user?.full_name ?? '', username: user?.username ?? '',
     bio: user?.bio ?? '', location: user?.location ?? '', phone: user?.phone ?? '',
     avatar_color: user?.avatar_color ?? '#0d7d76',
+    avatar_url: user?.avatar_url ?? '',
   }))
   if (!user) return null
 
-  const save = (e: React.FormEvent) => {
+  const handleAvatarFile = async (files: FileList | null) => {
+    const file = files?.[0]
+    if (!file) return
+    setUploadErr('')
+    setUploading(true)
+    try {
+      const url = await storage.uploadUserAvatar(file, user.id)
+      setF((prev) => ({ ...prev, avatar_url: url }))
+      await auth.updateProfile(user.id, { avatar_url: url })
+      await refreshProfile()
+    } catch (err) {
+      setUploadErr(err instanceof Error ? err.message : 'Could not upload profile image.')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleRemoveAvatar = async () => {
+    setF((prev) => ({ ...prev, avatar_url: '' }))
+    await auth.updateProfile(user.id, { avatar_url: '' })
+    await refreshProfile()
+  }
+
+  const save = async (e: React.FormEvent) => {
     e.preventDefault()
-    auth.updateProfile(user.id, f)
+    await auth.updateProfile(user.id, f)
+    await refreshProfile()
     setSaved(true)
     setTimeout(() => setSaved(false), 2200)
   }
 
   return (
-    <form onSubmit={save} className="card max-w-2xl space-y-5 p-4 sm:p-7">
-      <div className="flex min-w-0 items-center gap-4 sm:gap-5">
-        <span className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl font-display text-2xl font-bold text-white sm:h-20 sm:w-20" style={{ background: `linear-gradient(135deg, ${f.avatar_color}, ${f.avatar_color}bb)` }}>
-          {f.full_name.split(' ').slice(0, 2).map((w) => w[0]).join('')}
-        </span>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold">{user.email}</p>
-          <div className="mt-1.5 flex flex-wrap gap-2">
+    <form onSubmit={save} className="card max-w-2xl space-y-6 p-4 sm:p-7">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-6 pb-2 border-b border-line">
+        <div className="relative shrink-0">
+          {f.avatar_url ? (
+            <img
+              src={f.avatar_url}
+              alt={f.full_name}
+              className="h-20 w-20 rounded-2xl object-cover border-2 border-brand/30 shadow-md"
+            />
+          ) : (
+            <span
+              className="grid h-20 w-20 place-items-center rounded-2xl font-display text-2xl font-bold text-white shadow-md"
+              style={{ background: `linear-gradient(135deg, ${f.avatar_color}, ${f.avatar_color}bb)` }}
+            >
+              {f.full_name.split(' ').slice(0, 2).map((w) => w[0]).join('')}
+            </span>
+          )}
+          {uploading && (
+            <div className="absolute inset-0 grid place-items-center rounded-2xl bg-black/50 text-white">
+              <Loader2 size={24} className="animate-spin" />
+            </div>
+          )}
+        </div>
+
+        <div className="min-w-0 flex-1 space-y-2">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-line bg-surface-2 px-3 py-1.5 text-xs font-semibold text-fg transition hover:border-brand hover:bg-surface shadow-2xs">
+              <Camera size={14} className="text-brand" />
+              <span>{f.avatar_url ? 'Change profile photo' : 'Upload profile photo'}</span>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+                className="sr-only"
+                onChange={(e) => handleAvatarFile(e.target.files)}
+                disabled={uploading}
+              />
+            </label>
+            {f.avatar_url && (
+              <button
+                type="button"
+                onClick={handleRemoveAvatar}
+                className="inline-flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-xs text-rose-500 hover:bg-rose-500/10 transition"
+              >
+                <X size={13} /> Remove
+              </button>
+            )}
+          </div>
+          <p className="text-[0.72rem] text-faint">JPG, PNG or WEBP · up to 5 MB from your device</p>
+          {uploadErr && <p className="text-xs text-rose-500">{uploadErr}</p>}
+          <div className="flex flex-wrap gap-2 pt-1">
             <Badge tone="brand">{user.role}</Badge>
             <Badge>Member since {new Date(user.created_at).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}</Badge>
           </div>

@@ -151,8 +151,8 @@ export function HowItWorks() {
   }, [])
 
   return (
-    <section id="how-it-works" className="relative border-y border-line bg-bg-soft py-24 sm:py-32" aria-labelledby="how-it-works">
-      <div className="mx-auto max-w-7xl px-5 sm:px-8">
+    <section id="how-it-works" className="relative border-y border-line bg-bg-soft py-16 sm:py-32" aria-labelledby="how-it-works">
+      <div className="mx-auto max-w-7xl px-4 sm:px-8">
         <SectionHeading
           center
           eyebrow="How it works"
@@ -160,34 +160,57 @@ export function HowItWorks() {
           sub="No storefront costs, no listing fees, no technical setup. Register, build, list, sell, manage."
         />
 
-        <div ref={wrap} className="relative mx-auto mt-16 max-w-4xl">
-          <div className="absolute bottom-8 left-[1.4rem] top-8 w-px bg-line sm:left-1/2" aria-hidden>
-            <div ref={line} className="h-full w-full bg-gradient-to-b from-gold to-brand" />
+        <div ref={wrap} className="relative mx-auto mt-12 sm:mt-16 max-w-4xl">
+          {/* Vertical Timeline Track */}
+          <div className="absolute bottom-8 left-5 top-4 w-0.5 -translate-x-1/2 bg-line sm:left-1/2" aria-hidden>
+            <div ref={line} className="h-full w-full bg-gradient-to-b from-gold via-terracotta to-brand" />
           </div>
 
-          <ol className="space-y-12">
+          <ol className="space-y-10 sm:space-y-14">
             {STEPS.map((s, i) => (
               <li key={s.title} className={`hiw-step relative grid gap-5 sm:grid-cols-2 sm:gap-10 ${i % 2 === 0 ? '' : 'sm:[direction:rtl]'}`}>
-                <div className={`[direction:ltr] ${i % 2 === 0 ? 'sm:text-right' : 'sm:text-left'}`}>
-                  <span className="mb-2 inline-flex items-center gap-2 rounded-full border border-gold/40 bg-gold/10 px-3 py-1 text-[0.68rem] font-bold uppercase tracking-widest text-gold">
-                    Step {i + 1}
-                  </span>
-                  <h3 className="flex items-center gap-2.5 font-display text-2xl font-semibold [justify-inherit]">
-                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand text-onbrand">{s.icon}</span>
-                    {s.title}
+                {/* Step Content: pl-12 on mobile ensures full clearance from timeline line and badge */}
+                <div className={`[direction:ltr] pl-12 sm:pl-0 ${i % 2 === 0 ? 'sm:text-right' : 'sm:text-left'}`}>
+                  {/* Step Badge & Kicker */}
+                  <div className={`mb-2 flex items-center gap-2 ${i % 2 === 0 ? 'sm:justify-end' : 'justify-start'}`}>
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-gold/40 bg-gold/10 px-2.5 sm:px-3 py-0.5 sm:py-1 text-[0.65rem] sm:text-[0.68rem] font-bold uppercase tracking-widest text-gold">
+                      Step {i + 1}
+                    </span>
+                    <span className="sm:hidden text-[0.68rem] font-semibold uppercase tracking-wider text-faint">
+                      • {s.kicker}
+                    </span>
+                  </div>
+
+                  {/* Title & Step Icon */}
+                  <h3 className={`flex items-center gap-2.5 font-display text-xl sm:text-2xl font-semibold ${i % 2 === 0 ? 'sm:justify-end' : 'justify-start'}`}>
+                    <span className="grid h-9 w-9 sm:h-10 sm:w-10 shrink-0 place-items-center rounded-xl bg-brand text-onbrand shadow-2xs">{s.icon}</span>
+                    <span>{s.title}</span>
                   </h3>
-                  <p className="mt-1 text-xs font-semibold uppercase tracking-wider text-faint">{s.kicker}</p>
-                  <p className="mt-3 text-[0.92rem] leading-relaxed text-muted">{s.text}</p>
-                  <div className="mt-4 flex flex-wrap gap-2 [justify-inherit]">
+
+                  {/* Kicker (desktop) */}
+                  <p className="hidden sm:block mt-1 text-xs font-semibold uppercase tracking-wider text-faint">{s.kicker}</p>
+
+                  {/* Description */}
+                  <p className="mt-2.5 sm:mt-3 text-[0.88rem] sm:text-[0.92rem] leading-relaxed text-muted">{s.text}</p>
+
+                  {/* Feature Chips */}
+                  <div className={`mt-3.5 sm:mt-4 flex flex-wrap gap-1.5 sm:gap-2 ${i % 2 === 0 ? 'sm:justify-end' : 'justify-start'}`}>
                     {s.chips.map((c) => (
-                      <span key={c} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1 text-[0.7rem] font-medium text-muted">
-                        <CheckCircle2 size={11} className="text-brand dark:text-gold" /> {c}
+                      <span key={c} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 sm:px-3 py-1 text-[0.68rem] sm:text-[0.7rem] font-medium text-muted shadow-2xs">
+                        <CheckCircle2 size={11} className="text-brand dark:text-gold shrink-0" /> {c}
                       </span>
                     ))}
                   </div>
                 </div>
+
+                {/* Empty column for alternating desktop layout */}
                 <div className="hidden sm:block" />
-                <span className="absolute left-[1.4rem] top-1.5 z-10 grid h-7 w-7 -translate-x-1/2 place-items-center rounded-full border-2 border-gold bg-bg font-display text-[0.72rem] font-bold text-gold sm:left-1/2 tnum" aria-hidden>
+
+                {/* Number Badge centered on the timeline line */}
+                <span
+                  className="absolute left-5 top-0.5 sm:top-1.5 z-10 grid h-7 w-7 sm:h-8 sm:w-8 -translate-x-1/2 place-items-center rounded-full border-2 border-gold bg-surface font-display text-[0.72rem] sm:text-xs font-bold text-gold sm:left-1/2 shadow-2xs tnum"
+                  aria-hidden
+                >
                   {i + 1}
                 </span>
               </li>
@@ -197,8 +220,8 @@ export function HowItWorks() {
 
         <Reveal className="mt-14 text-center">
           <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <Link to="/register" className="btn btn-gold px-8 py-3.5">Create Your Free Account</Link>
-            <Link to="/become-seller" className="btn btn-ghost px-8 py-3.5">Guided seller tour <ArrowRight size={16} /></Link>
+            <Link to="/register" className="btn btn-gold px-8 py-3.5 w-full sm:w-auto">Create Your Free Account</Link>
+            <Link to="/become-seller" className="btn btn-ghost px-8 py-3.5 w-full sm:w-auto">Guided seller tour <ArrowRight size={16} /></Link>
           </div>
         </Reveal>
       </div>
